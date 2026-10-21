@@ -59,6 +59,16 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+  fonts:
+    - family: Nunito
+      fonts:
+        - asset: assets/fonts/nunito.ttf
+    - family: Nunito Sans
+      fonts:
+        - asset: assets/fonts/nunitosans.ttf
+    - family: JetBrains Mono
+      fonts:
+        - asset: assets/fonts/jetbrainsmono.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

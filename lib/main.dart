@@ -6,317 +6,762 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:web/web.dart' as web;
 
 import 'api.dart';
+import 'brand.dart';
+import 'link_input_cubit.dart';
 import 'probe_cubit.dart';
 
 void main() => runApp(
-  BlocProvider(create: (_) => ProbeCubit(), child: const DownloaderApp()),
+  MultiBlocProvider(
+    providers: [
+      BlocProvider(create: (_) => ProbeCubit()),
+      BlocProvider(create: (_) => LinkInputCubit()),
+    ],
+    child: const DownloaderApp(),
+  ),
 );
 
 class DownloaderApp extends StatelessWidget {
   const DownloaderApp({super.key});
   @override
   Widget build(BuildContext context) => MaterialApp(
-    title: 'Downloader · Проверка API',
+    title: 'Downloader · Видео по ссылке',
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      colorSchemeSeed: const Color(0xff9ce4c2),
-      scaffoldBackgroundColor: const Color(0xff111815),
-      inputDecorationTheme: const InputDecorationTheme(
-        border: OutlineInputBorder(),
+      scaffoldBackgroundColor: background,
+      fontFamily: 'Nunito Sans',
+      colorScheme: const ColorScheme.dark(
+        primary: coral,
+        onPrimary: background,
+        surface: surface,
+        onSurface: ink,
+        outline: line,
+      ),
+      textTheme: const TextTheme(
+        headlineLarge: TextStyle(
+          fontFamily: 'Nunito',
+          fontWeight: FontWeight.w800,
+          color: ink,
+        ),
+        titleLarge: TextStyle(
+          fontFamily: 'Nunito',
+          fontWeight: FontWeight.w700,
+          color: ink,
+        ),
+        bodyMedium: TextStyle(fontSize: 15, height: 1.6, color: muted),
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          minimumSize: const Size(48, 54),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          textStyle: const TextStyle(
+            fontFamily: 'Nunito Sans',
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+      snackBarTheme: const SnackBarThemeData(
+        backgroundColor: ink,
+        contentTextStyle: TextStyle(color: background),
       ),
     ),
-    home: const ProbePage(),
+    home: const DownloadPage(),
   );
 }
 
-class ProbePage extends StatefulWidget {
-  const ProbePage({super.key});
+void saveFile(ProbeState state) {
+  final blob = web.Blob([state.file!.toJS].toJS);
+  final url = web.URL.createObjectURL(blob);
+  (web.HTMLAnchorElement()
+        ..href = url
+        ..download = state.filename)
+      .click();
+  Future<void>.delayed(
+    const Duration(minutes: 1),
+    () => web.URL.revokeObjectURL(url),
+  );
+}
+
+class DownloadPage extends StatelessWidget {
+  const DownloadPage({super.key});
   @override
-  State<ProbePage> createState() => _ProbePageState();
+  Widget build(BuildContext context) => BlocListener<ProbeCubit, ProbeState>(
+    listenWhen: (before, after) =>
+        after.file != null && !identical(before.file, after.file),
+    listener: (_, state) => saveFile(state),
+    child: Scaffold(
+      body: SafeArea(
+        child: LayoutBuilder(
+          builder: (context, box) {
+            final mobile = box.maxWidth < 640;
+            return SingleChildScrollView(
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 1040),
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      mobile ? 22 : 48,
+                      mobile ? 24 : 36,
+                      mobile ? 22 : 48,
+                      28,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const _Header(),
+                        SizedBox(height: mobile ? 48 : 76),
+                        _Hero(mobile: mobile),
+                        SizedBox(height: mobile ? 32 : 42),
+                        const _LinkForm(),
+                        const SizedBox(height: 24),
+                        const _Result(),
+                        SizedBox(height: mobile ? 36 : 52),
+                        _Steps(mobile: mobile),
+                        SizedBox(height: mobile ? 36 : 48),
+                        const _Footer(),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    ),
+  );
 }
 
-class _ProbePageState extends State<ProbePage> {
-  final _url = TextEditingController();
-  final _endpoint = TextEditingController(
-    text: 'https://rue-cobalt.xenon.zone/',
+class _Header extends StatelessWidget {
+  const _Header();
+  @override
+  Widget build(BuildContext context) => Row(
+    children: [
+      const BrandMark(size: 39),
+      const SizedBox(width: 12),
+      const Text(
+        'downloader',
+        style: TextStyle(
+          fontFamily: 'Nunito',
+          fontSize: 25,
+          fontWeight: FontWeight.w900,
+          fontStyle: FontStyle.italic,
+          letterSpacing: -1,
+        ),
+      ),
+      const Spacer(),
+      const _Mono('БЕЗ ЛИШНЕГО', size: 9),
+    ],
   );
-  String _provider = 'cobalt', _quality = '360';
-  static const gap = SizedBox(height: 16);
+}
+
+class _Hero extends StatelessWidget {
+  const _Hero({required this.mobile});
+  final bool mobile;
+  @override
+  Widget build(BuildContext context) => Row(
+    crossAxisAlignment: CrossAxisAlignment.center,
+    children: [
+      Expanded(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Row(
+              children: [
+                DecoratedBox(
+                  decoration: BoxDecoration(color: coral),
+                  child: SizedBox(width: 6, height: 6),
+                ),
+                SizedBox(width: 10),
+                _Mono('YOUTUBE + TWITTER / X', size: 10),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(
+              'Хочется сохранить?\nПросто вставьте ссылку.',
+              style: TextStyle(
+                fontFamily: 'Nunito',
+                fontSize: mobile ? 35 : 52,
+                height: 1.13,
+                fontWeight: FontWeight.w800,
+                letterSpacing: mobile ? -1.3 : -2.1,
+                color: ink,
+              ),
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'Любимые видео — под рукой.\nВыберите качество и скачайте на своё устройство.',
+            ),
+          ],
+        ),
+      ),
+      if (!mobile) ...[const SizedBox(width: 28), const VideoDrawing()],
+    ],
+  );
+}
+
+class _LinkForm extends StatefulWidget {
+  const _LinkForm();
+  @override
+  State<_LinkForm> createState() => _LinkFormState();
+}
+
+class _LinkFormState extends State<_LinkForm> {
+  final controller = TextEditingController();
   @override
   void dispose() {
-    _url.dispose();
-    _endpoint.dispose();
+    controller.dispose();
     super.dispose();
   }
 
+  void changed(String value) {
+    context.read<LinkInputCubit>().changed(value);
+    context.read<ProbeCubit>().reset();
+  }
+
+  Future<void> paste() async {
+    try {
+      final data = await Clipboard.getData(Clipboard.kTextPlain);
+      if (!mounted || context.read<ProbeCubit>().state.busy) return;
+      controller.text = data?.text ?? '';
+      changed(controller.text);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Вставьте ссылку через меню поля или Ctrl+V.'),
+        ),
+      );
+    }
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    body: SafeArea(
-      child: Center(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 860),
-          child: BlocBuilder<ProbeCubit, ProbeState>(
-            builder: (context, state) => ListView(
-              padding: const EdgeInsets.all(24),
-              children: [
-                Text(
-                  'DOWNLOADER / ЛАБОРАТОРИЯ',
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: const Color(0xff9ce4c2),
-                    letterSpacing: 2,
-                  ),
-                ),
-                gap,
-                Text(
-                  'Проверим скачивание',
-                  style: Theme.of(context).textTheme.headlineLarge,
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  'Twitter/X и YouTube · прямые запросы из вашего браузера · без ключей',
-                ),
-                const SizedBox(height: 24),
-                _card(_form(context, state)),
-                gap,
-                _card([
-                  Text(
-                    state.message,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  if (state.busy) ...[gap, const LinearProgressIndicator()],
-                  if (state.bytes > 0) ...[
-                    gap,
-                    Text(
-                      'Получено: ${(state.bytes / 1024 / 1024).toStringAsFixed(2)} МиБ',
-                    ),
-                  ],
-                  if (state.file != null) ...[
-                    gap,
-                    FilledButton.icon(
-                      onPressed: () => _save(state),
-                      icon: const Icon(Icons.save_alt),
-                      label: const Text('Сохранить файл'),
-                    ),
-                  ],
-                  if (state.links.isNotEmpty) ...[
-                    gap,
-                    const Text(
-                      '«Открыть напрямую» передаёт ссылку браузеру. «Проверить загрузку» получает файл через CORS и показывает фактический объём.',
-                    ),
-                  ],
-                  for (final link in state.links) ...[
-                    gap,
-                    _media(context, link, state.busy),
-                  ],
-                ]),
-                gap,
-                _card([
-                  Row(
-                    children: [
-                      const Expanded(child: Text('Журнал проверки')),
-                      IconButton(
-                        tooltip: 'Скопировать журнал',
-                        onPressed: () =>
-                            Clipboard.setData(ClipboardData(text: state.log)),
-                        icon: const Icon(Icons.copy),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SelectableText(
-                    state.log.isEmpty
-                        ? 'Здесь появятся HTTP-статусы, ответы API и ошибки.'
-                        : state.log,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 12,
-                    ),
-                  ),
-                ]),
-                gap,
-                const Text(
-                  'Ссылка на ролик передаётся выбранному стороннему сервису. API могут быть недоступны. Журнал может содержать временные ссылки доступа — проверьте его перед отправкой. Проверка файла: до 200 МиБ и 120 секунд. Звук и воспроизведение проверяйте самостоятельно.',
-                ),
-              ],
-            ),
-          ),
-        ),
+  Widget build(BuildContext context) => BlocBuilder<ProbeCubit, ProbeState>(
+    buildWhen: (a, b) => a.busy != b.busy,
+    builder: (context, state) => Container(
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: line),
+        borderRadius: BorderRadius.circular(12),
       ),
-    ),
-  );
-  List<Widget> _form(BuildContext context, ProbeState state) => [
-    TextField(
-      controller: _url,
-      enabled: !state.busy,
-      decoration: const InputDecoration(
-        labelText: 'Ссылка на видео',
-        hintText: 'https://www.youtube.com/watch?v=…',
-      ),
-      keyboardType: TextInputType.url,
-    ),
-    gap,
-    Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        OutlinedButton(
-          onPressed: state.busy
-              ? null
-              : () {
-                  setState(() => _provider = 'cobalt');
-                  _url.text = 'https://www.youtube.com/watch?v=jNQXAC9IVRw';
-                },
-          child: const Text('Пример YouTube'),
-        ),
-        OutlinedButton(
-          onPressed: state.busy
-              ? null
-              : () {
-                  setState(() => _provider = 'fx');
-                  _url.text =
-                      'https://x.com/CTVJLaidlaw/status/1600649710662213632';
-                },
-          child: const Text('Пример Twitter'),
-        ),
-      ],
-    ),
-    gap,
-    DropdownButtonFormField<String>(
-      isExpanded: true,
-      initialValue: _provider,
-      key: ValueKey(_provider),
-      decoration: const InputDecoration(labelText: 'Сервис'),
-      items: const [
-        DropdownMenuItem(
-          value: 'cobalt',
-          child: Text('Cobalt · YouTube / Twitter'),
-        ),
-        DropdownMenuItem(
-          value: 'fx',
-          child: Text('FxEmbed · только Twitter/X'),
-        ),
-      ],
-      onChanged: state.busy
-          ? null
-          : (value) => setState(() => _provider = value!),
-    ),
-    if (_provider == 'cobalt') ...[
-      gap,
-      TextField(
-        controller: _endpoint,
-        enabled: !state.busy,
-        decoration: const InputDecoration(
-          labelText: 'Адрес API Cobalt (можно изменить)',
-        ),
-      ),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        children: [
-          for (final host in ['rue-cobalt.xenon.zone', 'cobaltapi.cjs.nz'])
-            ActionChip(
-              label: Text(host),
-              onPressed: state.busy
-                  ? null
-                  : () => _endpoint.text = 'https://$host/',
-            ),
-        ],
-      ),
-      gap,
-      DropdownButtonFormField<String>(
-        isExpanded: true,
-        initialValue: _quality,
-        decoration: const InputDecoration(labelText: 'Желаемое качество'),
-        items: [
-          for (final quality in ['144', '360', '720', '1080'])
-            DropdownMenuItem(value: quality, child: Text('${quality}p')),
-        ],
-        onChanged: state.busy
-            ? null
-            : (value) => setState(() => _quality = value!),
-      ),
-    ],
-    gap,
-    Wrap(
-      spacing: 12,
-      runSpacing: 12,
-      children: [
-        FilledButton.icon(
-          onPressed: state.busy
-              ? null
-              : () => context.read<ProbeCubit>().inspect(
-                  _url.text,
-                  _endpoint.text,
-                  _provider == 'fx',
-                  _quality,
-                ),
-          icon: const Icon(Icons.search),
-          label: const Text('Получить ссылки'),
-        ),
-        if (state.busy)
-          OutlinedButton(
-            onPressed: context.read<ProbeCubit>().cancel,
-            child: const Text('Отменить'),
-          ),
-      ],
-    ),
-  ];
-  Widget _card(List<Widget> children) => Card(
-    margin: EdgeInsets.zero,
-    child: Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: children,
-      ),
-    ),
-  );
-  Widget _media(BuildContext context, MediaLink link, bool busy) => Column(
-    crossAxisAlignment: CrossAxisAlignment.start,
-    children: [
-      Text(link.label),
-      const SizedBox(height: 8),
-      Wrap(
-        spacing: 8,
-        runSpacing: 8,
         children: [
-          FilledButton.tonal(
-            onPressed: busy
-                ? null
-                : () => context.read<ProbeCubit>().download(link),
-            child: const Text('Проверить загрузку'),
+          const _Mono('ССЫЛКА НА ВИДЕО', size: 10),
+          const SizedBox(height: 12),
+          LayoutBuilder(
+            builder: (context, box) {
+              final input = TextField(
+                controller: controller,
+                enabled: !state.busy,
+                onChanged: changed,
+                onSubmitted: state.busy
+                    ? null
+                    : (_) => context.read<ProbeCubit>().inspectAuto(
+                        controller.text,
+                      ),
+                style: const TextStyle(color: ink, fontSize: 15),
+                keyboardType: TextInputType.url,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(
+                  hintText: 'Вставьте ссылку сюда',
+                  hintStyle: const TextStyle(color: muted),
+                  prefixIcon: const Padding(
+                    padding: EdgeInsets.all(14),
+                    child: SoftIcon(Glyph.link, size: 20, color: muted),
+                  ),
+                  suffixIcon: IconButton(
+                    tooltip: 'Вставить ссылку',
+                    onPressed: state.busy ? null : paste,
+                    icon: const Icon(Icons.content_paste_rounded, size: 20),
+                  ),
+                  filled: true,
+                  fillColor: background,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 18,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(7),
+                    borderSide: const BorderSide(color: line),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(7),
+                    borderSide: const BorderSide(color: line),
+                  ),
+                ),
+              );
+              final button = FilledButton(
+                onPressed: state.busy
+                    ? null
+                    : () => context.read<ProbeCubit>().inspectAuto(
+                        controller.text,
+                      ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text('Скачать'),
+                    SizedBox(width: 12),
+                    SoftIcon(Glyph.download, color: background, size: 19),
+                  ],
+                ),
+              );
+              if (box.maxWidth < 570) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [input, const SizedBox(height: 12), button],
+                );
+              }
+              return Row(
+                children: [
+                  Expanded(child: input),
+                  const SizedBox(width: 12),
+                  SizedBox(height: 58, child: button),
+                ],
+              );
+            },
           ),
-          OutlinedButton(
-            onPressed: () => web.window.open(
-              link.url.toString(),
-              '_blank',
-              'noopener,noreferrer',
-            ),
-            child: const Text('Открыть напрямую'),
-          ),
-          IconButton(
-            tooltip: 'Скопировать ссылку',
-            onPressed: () =>
-                Clipboard.setData(ClipboardData(text: link.url.toString())),
-            icon: const Icon(Icons.copy),
+          const SizedBox(height: 14),
+          BlocBuilder<LinkInputCubit, String>(
+            builder: (context, value) {
+              final service = context.read<LinkInputCubit>().service;
+              final label = switch (service) {
+                VideoService.youtube =>
+                  'YouTube определён · найдём доступное качество',
+                VideoService.twitter =>
+                  'Twitter / X определён · найдём доступное качество',
+                null => 'YouTube, Shorts и Twitter / X. Сервис определим сами.',
+              };
+              return AnimatedSwitcher(
+                duration: MediaQuery.disableAnimationsOf(context)
+                    ? Duration.zero
+                    : const Duration(milliseconds: 220),
+                child: Align(
+                  key: ValueKey(service),
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    label,
+                    style: const TextStyle(fontSize: 12, color: muted),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
-    ],
+    ),
   );
-  void _save(ProbeState state) {
-    final blob = web.Blob([state.file!.toJS].toJS);
-    final url = web.URL.createObjectURL(blob);
-    final anchor = web.HTMLAnchorElement()
-      ..href = url
-      ..download = state.filename;
-    anchor.click();
-    Future<void>.delayed(
-      const Duration(minutes: 1),
-      () => web.URL.revokeObjectURL(url),
+}
+
+class _Result extends StatelessWidget {
+  const _Result();
+  @override
+  Widget build(BuildContext context) => BlocBuilder<ProbeCubit, ProbeState>(
+    builder: (context, state) {
+      final visible =
+          state.busy ||
+          state.log.isNotEmpty ||
+          state.message != 'Готово к проверке';
+      return AnimatedSize(
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : const Duration(milliseconds: 300),
+        curve: Curves.easeInOutCubic,
+        alignment: Alignment.topCenter,
+        child: visible
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (state.busy) _Progress(state: state),
+                  if (!state.busy && state.links.isEmpty)
+                    _Notice(state.message),
+                  if (state.file != null) ...[
+                    const _Notice(
+                      'Готово. Файл передан браузеру для сохранения.',
+                      success: true,
+                    ),
+                    const SizedBox(height: 12),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: () => saveFile(state),
+                        icon: const SoftIcon(Glyph.download, size: 18),
+                        label: const Text('Сохранить ещё раз'),
+                      ),
+                    ),
+                  ],
+                  if (state.links.isNotEmpty) ...[
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'Выберите качество',
+                            style: TextStyle(
+                              fontFamily: 'Nunito',
+                              fontSize: 23,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        _Mono(
+                          '${state.links.length.toString().padLeft(2, '0')} ВАРИАНТОВ',
+                          size: 9,
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Размер файла приблизительный, если он указан со знаком ≈.',
+                      style: TextStyle(fontSize: 12, color: muted),
+                    ),
+                    const SizedBox(height: 16),
+                    LayoutBuilder(
+                      builder: (context, box) {
+                        final columns = box.maxWidth < 570 ? 1 : 3;
+                        final width =
+                            (box.maxWidth - (columns - 1) * 12) / columns;
+                        return Wrap(
+                          spacing: 12,
+                          runSpacing: 12,
+                          children: [
+                            for (final link in state.links)
+                              SizedBox(
+                                width: width,
+                                child: _FormatCard(
+                                  link: link,
+                                  busy: state.busy,
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ],
+              )
+            : const SizedBox.shrink(),
+      );
+    },
+  );
+}
+
+class _Progress extends StatelessWidget {
+  const _Progress({required this.state});
+  final ProbeState state;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      border: Border.all(color: line),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(state.message, style: const TextStyle(color: ink)),
+            ),
+            TextButton(
+              onPressed: context.read<ProbeCubit>().cancel,
+              child: const Text('Отменить'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        const LinearProgressIndicator(
+          minHeight: 2,
+          color: coral,
+          backgroundColor: line,
+        ),
+        if (state.bytes > 0) ...[
+          const SizedBox(height: 12),
+          _Mono(
+            '${(state.bytes / 1048576).toStringAsFixed(1)} МИБ ПОЛУЧЕНО',
+            size: 10,
+          ),
+        ],
+      ],
+    ),
+  );
+}
+
+class _Notice extends StatelessWidget {
+  const _Notice(this.text, {this.success = false});
+  final String text;
+  final bool success;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: surface,
+      border: Border.all(color: line),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (success)
+          const SoftIcon(Glyph.check, color: coral)
+        else
+          const Icon(Icons.info_outline_rounded, color: coral, size: 22),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(text, style: const TextStyle(color: ink)),
+        ),
+      ],
+    ),
+  );
+}
+
+class _FormatCard extends StatelessWidget {
+  const _FormatCard({required this.link, required this.busy});
+  final MediaLink link;
+  final bool busy;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(18),
+    decoration: BoxDecoration(
+      color: surface,
+      border: Border.all(color: line),
+      borderRadius: BorderRadius.circular(8),
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Text(
+          link.label,
+          style: const TextStyle(
+            fontFamily: 'Nunito',
+            fontSize: 23,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 8),
+        _Mono(link.details.toUpperCase(), size: 10),
+        const SizedBox(height: 8),
+        Text(
+          link.estimatedBytes == null
+              ? 'Размер станет известен при загрузке'
+              : '≈ ${(link.estimatedBytes! / 1048576).toStringAsFixed(1)} МиБ',
+          style: const TextStyle(fontSize: 12, color: muted),
+        ),
+        const SizedBox(height: 20),
+        FilledButton.tonal(
+          onPressed: busy
+              ? null
+              : () => context.read<ProbeCubit>().download(link),
+          style: FilledButton.styleFrom(
+            backgroundColor: ink,
+            foregroundColor: background,
+          ),
+          child: const Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Скачать'),
+              SizedBox(width: 10),
+              SoftIcon(Glyph.download, color: background, size: 18),
+            ],
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: busy
+              ? null
+              : () => web.window.open(
+                  link.url.toString(),
+                  '_blank',
+                  'noopener,noreferrer',
+                ),
+          child: const Text(
+            'Открыть напрямую',
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _Steps extends StatelessWidget {
+  const _Steps({required this.mobile});
+  final bool mobile;
+  @override
+  Widget build(BuildContext context) {
+    final steps = [
+      _Step(
+        compact: mobile,
+        number: '01',
+        glyph: Glyph.link,
+        title: 'Вставьте ссылку',
+        body: 'Скопируйте ссылку на видео\nиз YouTube или Twitter / X.',
+      ),
+      _Step(
+        compact: mobile,
+        number: '02',
+        glyph: Glyph.play,
+        title: 'Выберите качество',
+        body: 'Покажем доступные варианты.\nВы решаете, какой сохранить.',
+      ),
+      _Step(
+        compact: mobile,
+        number: '03',
+        glyph: Glyph.download,
+        title: 'Заберите с собой',
+        body: 'Скачайте файл на устройство\nи смотрите, когда удобно.',
+      ),
+    ];
+    if (mobile) {
+      return Column(
+        children: [
+          for (final step in steps) ...[step, const SizedBox(height: 12)],
+        ],
+      );
+    }
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < steps.length; i++) ...[
+            if (i > 0) const SizedBox(width: 18),
+            Expanded(child: steps[i]),
+          ],
+        ],
+      ),
     );
   }
+}
+
+class _Step extends StatelessWidget {
+  const _Step({
+    this.compact = false,
+    required this.number,
+    required this.glyph,
+    required this.title,
+    required this.body,
+  });
+  final String number, title, body;
+  final Glyph glyph;
+  final bool compact;
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.all(20),
+    decoration: BoxDecoration(
+      border: Border.all(color: line.withValues(alpha: .75)),
+      borderRadius: BorderRadius.circular(2),
+    ),
+    child: compact
+        ? Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              SoftIcon(glyph, size: 24),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontFamily: 'Nunito',
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
+                        color: ink,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      body.replaceAll('\n', ' '),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        height: 1.6,
+                        color: muted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _Mono(number, size: 9),
+            ],
+          )
+        : Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  SoftIcon(glyph, size: 28, color: ink),
+                  const Spacer(),
+                  _Mono(number, size: 10),
+                ],
+              ),
+              const SizedBox(height: 26),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontFamily: 'Nunito',
+                  fontSize: 20,
+                  color: ink,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Text(
+                body,
+                style: const TextStyle(fontSize: 12, height: 1.7, color: muted),
+              ),
+            ],
+          ),
+  );
+}
+
+class _Footer extends StatelessWidget {
+  const _Footer();
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Divider(color: line),
+      const SizedBox(height: 16),
+      Wrap(
+        alignment: WrapAlignment.spaceBetween,
+        spacing: 24,
+        runSpacing: 12,
+        children: const [
+          Text(
+            'Без регистрации. Без лишних действий.',
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+          _Mono('ССЫЛКА → ВИДЕО → ГОТОВО', size: 9),
+        ],
+      ),
+      const SizedBox(height: 14),
+      const Text(
+        'Ссылку обработает сторонний сервис. Доступность видео зависит от источника. Сохраняйте материалы, на скачивание которых у вас есть право.',
+        style: TextStyle(fontSize: 11, color: muted, height: 1.6),
+      ),
+    ],
+  );
+}
+
+class _Mono extends StatelessWidget {
+  const _Mono(this.text, {this.size = 11});
+  final String text;
+  final double size;
+  @override
+  Widget build(BuildContext context) => Text(
+    text,
+    style: TextStyle(
+      fontFamily: 'JetBrains Mono',
+      fontSize: size,
+      letterSpacing: .6,
+      color: muted,
+    ),
+  );
 }

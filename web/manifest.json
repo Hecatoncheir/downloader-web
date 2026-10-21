@@ -3,9 +3,9 @@
     "short_name": "Downloader",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#111815",
-    "theme_color": "#111815",
-    "description": "Проверка скачивания видео через публичные API.",
+    "background_color": "#191410",
+    "theme_color": "#191410",
+    "description": "Сохраняйте видео YouTube и Twitter / X по ссылке.",
     "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
@@ -33,4 +33,3 @@
         }
     ]
 }
-

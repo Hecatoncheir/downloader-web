@@ -25,9 +25,87 @@ class ProbeState {
 }
 
 class ProbeCubit extends Cubit<ProbeState> {
-  ProbeCubit() : super(const ProbeState());
+  ProbeCubit({http.Client Function()? clientFactory})
+    : _clientFactory = clientFactory ?? http.Client.new,
+      super(const ProbeState());
+  final http.Client Function() _clientFactory;
   http.Client? _client;
   int _generation = 0;
+  Future<void> inspectAuto(String input) async {
+    try {
+      final service = detectService(input);
+      if (service == VideoService.twitter) {
+        await inspect(input, '', true, '720');
+        return;
+      }
+      await _youtube(input);
+    } catch (error) {
+      emit(ProbeState(message: _error(error)));
+    }
+  }
+
+  Future<void> _youtube(String input) async {
+    final generation = ++_generation;
+    final client = _clientFactory();
+    _client?.close();
+    _client = client;
+    emit(const ProbeState(busy: true, message: 'Ищем доступное качество…'));
+    try {
+      final results = await Future.wait([
+        for (final quality in ['360', '720', '1080'])
+          _youtubeVariant(client, input, quality),
+      ]).timeout(const Duration(seconds: 45));
+      if (generation != _generation) return;
+      final unique = <String, MediaLink>{};
+      for (final result in results) {
+        for (final link in result.links) {
+          unique.putIfAbsent(link.filename, () => link);
+        }
+      }
+      emit(
+        ProbeState(
+          message: unique.isEmpty
+              ? 'Не удалось получить видео. Попробуйте ещё раз чуть позже.'
+              : 'Выберите качество',
+          links: unique.values.toList(),
+          log: results.map((r) => r.log).join('\n'),
+        ),
+      );
+    } catch (error) {
+      if (generation == _generation) {
+        emit(ProbeState(message: _error(error), log: '$error'));
+      }
+    } finally {
+      client.close();
+      if (identical(_client, client)) _client = null;
+    }
+  }
+
+  Future<ProbeState> _youtubeVariant(
+    http.Client client,
+    String input,
+    String quality,
+  ) async {
+    try {
+      final response = await _request(
+        client,
+        Uri.https('rue-cobalt.xenon.zone', '/'),
+        httpsUri(input),
+        false,
+        quality,
+      ).timeout(const Duration(seconds: 35));
+      final log = '$quality: HTTP ${response.statusCode}\n${response.body}\n';
+      if (response.statusCode != 200) return ProbeState(log: log);
+      return ProbeState(links: parseLinks(response.body, false), log: log);
+    } catch (error) {
+      return ProbeState(log: '$quality: $error\n');
+    }
+  }
+
+  void reset() {
+    if (!state.busy) emit(const ProbeState());
+  }
+
   void cancel() {
     _generation++;
     _client?.close();
@@ -44,7 +122,7 @@ class ProbeCubit extends Cubit<ProbeState> {
     String quality,
   ) async {
     final generation = ++_generation;
-    final client = http.Client();
+    final client = _clientFactory();
     _client?.close();
     _client = client;
     var log = '';
@@ -106,7 +184,7 @@ class ProbeCubit extends Cubit<ProbeState> {
 
   Future<void> download(MediaLink link) async {
     final generation = ++_generation;
-    final client = http.Client();
+    final client = _clientFactory();
     _client?.close();
     _client = client;
     final previous = state;
@@ -210,9 +288,19 @@ class ProbeCubit extends Cubit<ProbeState> {
       return 'Истекло время ожидания. Попробуйте другой API или сеть.';
     }
     if (error is http.ClientException) {
-      return 'Ответ недоступен: возможны CORS, блокировка сети или недоступность сервера. Подробности — в консоли браузера.';
+      return 'Не удалось связаться с сервисом. Попробуйте ещё раз или откройте видео напрямую, если ссылка уже получена.';
     }
-    return error.toString();
+    if (error is FormatException) {
+      if (error.message.startsWith('API:') ||
+          error.message.startsWith('FxEmbed:')) {
+        return 'Не удалось получить видео. Проверьте ссылку или попробуйте позже.';
+      }
+      if (error.message.startsWith('Файл: HTTP')) {
+        return 'Не удалось скачать файл. Попробуйте открыть его напрямую.';
+      }
+      return error.message;
+    }
+    return 'Не удалось обработать видео. Попробуйте ещё раз чуть позже.';
   }
 
   @override

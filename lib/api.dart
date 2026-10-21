@@ -1,10 +1,58 @@
 import 'dart:convert';
 
 class MediaLink {
-  const MediaLink(this.label, this.url, this.filename);
+  const MediaLink(
+    this.label,
+    this.url,
+    this.filename, {
+    this.details = 'MP4',
+    this.estimatedBytes,
+  });
   final String label;
   final Uri url;
   final String filename;
+  final String details;
+  final int? estimatedBytes;
+}
+
+enum VideoService { youtube, twitter }
+
+VideoService detectService(String value) {
+  final uri = httpsUri(value);
+  if ({
+    'youtube.com',
+    'www.youtube.com',
+    'm.youtube.com',
+    'music.youtube.com',
+    'youtu.be',
+  }.contains(uri.host)) {
+    if (uri.path.isEmpty || uri.path == '/') {
+      throw const FormatException('Вставьте ссылку на конкретное видео.');
+    }
+    return VideoService.youtube;
+  }
+  if (!{
+    'twitter.com',
+    'www.twitter.com',
+    'x.com',
+    'www.x.com',
+    'mobile.twitter.com',
+  }.contains(uri.host)) {
+    throw const FormatException('Поддерживаются ссылки YouTube и Twitter / X.');
+  }
+  twitterApi(value);
+  return VideoService.twitter;
+}
+
+String resolutionLabel(String url) {
+  final match = RegExp(r'/(\d+)x(\d+)/').firstMatch(url);
+  if (match == null) return 'Исходное качество';
+  return '${match[1]} × ${match[2]}';
+}
+
+String cobaltQuality(String filename) {
+  return RegExp(r'\((\d{2,4}p)').firstMatch(filename)?.group(1) ??
+      'Исходное качество';
 }
 
 Uri httpsUri(String value) {
@@ -50,7 +98,7 @@ List<MediaLink> parseLinks(String body, bool fx) {
   if (data['url'] is String) {
     return [
       MediaLink(
-        'Готовый файл · ${data['status']}',
+        cobaltQuality(data['filename'] as String? ?? ''),
         httpsUri(data['url']),
         data['filename'] as String? ?? 'video.mp4',
       ),
@@ -88,12 +136,19 @@ List<MediaLink> fxLinks(Map<String, dynamic> data) {
     for (final format in formats) {
       links.add(
         MediaLink(
-          'Видео ${i + 1} · ${format['bitrate'] ?? '?'} бит/с',
+          resolutionLabel(format['url'] as String),
           httpsUri(format['url']),
           'twitter-${i + 1}.mp4',
+          details: 'MP4 · Видео ${i + 1}',
+          estimatedBytes: estimatedSize(format['bitrate'], video['duration']),
         ),
       );
     }
   }
   return links;
+}
+
+int? estimatedSize(dynamic bitrate, dynamic duration) {
+  if (bitrate is! num || duration is! num) return null;
+  return (bitrate * duration / 8).round();
 }
