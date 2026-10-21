@@ -1,8 +1,42 @@
-# Downloader
+<div align="center">
+  <a href="https://hecatoncheir.github.io/downloader-web/">
+    <img src="assets/brand/mark.png" alt="Логотип Downloader" width="88" height="88">
+  </a>
+  <h1>Downloader</h1>
+  <p><strong>Ссылка → видео → готово.</strong></p>
+  <p>Сохраняйте любимые видео из YouTube и Twitter / X.<br>Одно поле, выбор качества и ничего лишнего.</p>
+  <p>
+    <a href="https://github.com/Hecatoncheir/downloader-web/actions/workflows/pages.yml"><img src="https://github.com/Hecatoncheir/downloader-web/actions/workflows/pages.yml/badge.svg" alt="Проверка и публикация Flutter Web"></a>
+  </p>
+  <h3><a href="https://hecatoncheir.github.io/downloader-web/">Открыть приложение ↗</a></h3>
+  <p>Работает в браузере · Без регистрации · Для телефона и компьютера</p>
+</div>
 
-[Открыть приложение](https://hecatoncheir.github.io/downloader-web/) · [Репозиторий](https://github.com/Hecatoncheir/downloader-web)
+---
 
-Flutter Web для скачивания видео YouTube и Twitter/X через сторонние API без ключей и собственного сервера.
+## На любом экране
+
+Один сценарий на всех устройствах. На компьютере — просторная форма и сетка вариантов качества; на телефоне — удобная кнопка и карточки в один столбец.
+
+<table>
+  <tr>
+    <th>Десктопная версия</th>
+    <th>Мобильная версия</th>
+  </tr>
+  <tr>
+    <td valign="top"><a href="docs/screenshots/desktop.png"><img src="docs/screenshots/desktop.png" alt="Десктопный интерфейс Downloader: поле ссылки, кнопка скачивания и три шага" width="660"></a></td>
+    <td valign="top"><a href="docs/screenshots/mobile.png"><img src="docs/screenshots/mobile.png" alt="Мобильный интерфейс Downloader: ввод ссылки и кнопка на всю ширину" width="220"></a></td>
+  </tr>
+</table>
+
+Нажмите на скриншот, чтобы открыть его в полном размере. Снимки сделаны при ширине экрана 1366 и 390 пикселей.
+
+## Что умеет
+
+- **Определяет сервис по ссылке.** YouTube, Shorts и Twitter / X — без ручного переключения.
+- **Показывает доступное качество.** Разрешение и примерный размер файла, когда источник отдаёт нужные данные.
+- **Сохраняет на устройство.** С возможностью отменить загрузку или открыть файл напрямую.
+- **Остаётся простым.** Адаптивная компоновка, мягкие анимации и локально подключённые шрифты.
 
 ## Как пользоваться
 
