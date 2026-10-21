@@ -1,4 +1,5 @@
 import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,41 @@ void main() => runApp(
     child: const DownloaderApp(),
   ),
 );
+
+Future<void> shareVideo(BuildContext context, MediaLink link) async {
+  final messenger = ScaffoldMessenger.of(context);
+  try {
+    if (!web.window.navigator.hasProperty('share'.toJS).toDart) {
+      await Clipboard.setData(ClipboardData(text: link.url.toString()));
+      if (!context.mounted) return;
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Диалог отправки недоступен. Ссылка на видео скопирована.',
+          ),
+        ),
+      );
+      return;
+    }
+    await web.window.navigator
+        .share(
+          web.ShareData(
+            title: 'Видео · ${link.label}',
+            url: link.url.toString(),
+          ),
+        )
+        .toDart;
+  } catch (error) {
+    if (!context.mounted || error.toString().contains('AbortError')) return;
+    messenger.showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Не удалось открыть диалог отправки. Попробуйте ещё раз.',
+        ),
+      ),
+    );
+  }
+}
 
 class DownloaderApp extends StatelessWidget {
   const DownloaderApp({super.key});
@@ -650,6 +686,14 @@ class _FormatCard extends StatelessWidget {
                 ),
           child: const Text(
             'Открыть напрямую',
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextButton(
+          onPressed: busy ? null : () => shareVideo(context, link),
+          child: const Text(
+            'Поделиться',
             style: TextStyle(fontSize: 12, color: muted),
           ),
         ),
