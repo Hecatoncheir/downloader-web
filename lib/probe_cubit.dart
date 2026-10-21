@@ -18,6 +18,7 @@ class ProbeState {
     this.filename = 'video.mp4',
     this.attachmentUrl,
     this.downloadFailed = false,
+    this.fallbackUrl,
   });
   final bool busy;
   final String message, log, filename;
@@ -26,6 +27,7 @@ class ProbeState {
   final Uint8List? file;
   final Uri? attachmentUrl;
   final bool downloadFailed;
+  final Uri? fallbackUrl;
 }
 
 class ProbeCubit extends Cubit<ProbeState> {
@@ -250,6 +252,7 @@ class ProbeCubit extends Cubit<ProbeState> {
             links: previous.links,
             bytes: state.bytes,
             downloadFailed: true,
+            fallbackUrl: link.url,
           ),
         );
       }

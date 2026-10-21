@@ -120,6 +120,7 @@ void main() {
     );
     expect(cubit.state.attachmentUrl, isNull);
     expect(cubit.state.downloadFailed, true);
+    expect(cubit.state.fallbackUrl.toString(), 'https://video.twimg.com/a.mp4');
     expect(cubit.state.message, contains('не выдал'));
     await cubit.close();
   });

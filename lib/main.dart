@@ -99,9 +99,16 @@ class DownloadPage extends StatelessWidget {
     listenWhen: (before, after) =>
         (after.file != null && !identical(before.file, after.file)) ||
         (after.attachmentUrl != null &&
-            before.attachmentUrl != after.attachmentUrl),
+            before.attachmentUrl != after.attachmentUrl) ||
+        (after.fallbackUrl != null && before.fallbackUrl != after.fallbackUrl),
     listener: (_, state) {
-      if (state.attachmentUrl != null) {
+      if (state.fallbackUrl != null) {
+        web.window.open(
+          state.fallbackUrl.toString(),
+          '_blank',
+          'noopener,noreferrer',
+        );
+      } else if (state.attachmentUrl != null) {
         startFileDownload(state.attachmentUrl!, state.filename);
       } else {
         saveFile(state);
