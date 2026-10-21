@@ -169,25 +169,29 @@ List<MediaLink> twitterDownloadChoices(String body, String input) {
   final result = <MediaLink>[];
   for (var i = 0; i < videos.length; i++) {
     final video = videos[i];
-    final format = _bestTwitterFormat(video);
-    if (format == null) continue;
-    final url = httpsUri(format['url'] as String);
-    final index = _twitterMediaIndex(video, all, i);
-    result.add(
-      MediaLink(
-        resolutionLabel(url.toString()),
-        url,
-        'twitter-${i + 1}.mp4',
-        details: 'MP4 · Видео ${i + 1} · исходное',
-        estimatedBytes: estimatedSize(format['bitrate'], video['duration']),
-        sourceUrl: Uri.https('x.com', '${post.path}/video/${index + 1}'),
-      ),
-    );
+    final formats = _twitterFormats(video);
+    for (var j = 0; j < formats.length; j++) {
+      final format = formats[j];
+      final url = httpsUri(format['url'] as String);
+      final index = _twitterMediaIndex(video, all, i);
+      result.add(
+        MediaLink(
+          resolutionLabel(url.toString()),
+          url,
+          'twitter-${i + 1}.mp4',
+          details: 'MP4 · Видео ${i + 1}${j == 0 ? ' · исходное' : ''}',
+          estimatedBytes: estimatedSize(format['bitrate'], video['duration']),
+          sourceUrl: j == 0
+              ? Uri.https('x.com', '${post.path}/video/${index + 1}')
+              : null,
+        ),
+      );
+    }
   }
   return result;
 }
 
-Map<String, dynamic>? _bestTwitterFormat(dynamic video) {
+List<Map<String, dynamic>> _twitterFormats(dynamic video) {
   final formats = (video['formats'] as List? ?? [])
       .where((f) => f['container'] == 'mp4')
       .toList();
@@ -196,10 +200,16 @@ Map<String, dynamic>? _bestTwitterFormat(dynamic video) {
         ((b['bitrate'] as num?) ?? 0).compareTo((a['bitrate'] as num?) ?? 0),
   );
   if (formats.isNotEmpty) {
-    return Map<String, dynamic>.from(formats.first as Map);
+    return formats
+        .map((format) => Map<String, dynamic>.from(format as Map))
+        .toList();
   }
-  if (video['url'] is String) return {'url': video['url']};
-  return null;
+  if (video['url'] is String) {
+    return [
+      {'url': video['url']},
+    ];
+  }
+  return [];
 }
 
 int _twitterMediaIndex(dynamic video, List all, int fallback) {

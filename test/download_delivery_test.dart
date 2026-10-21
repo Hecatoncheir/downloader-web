@@ -7,7 +7,7 @@ import 'package:downloader_lab/api.dart';
 import 'package:downloader_lab/probe_cubit.dart';
 
 void main() {
-  test('Twitter: только исходный вариант, индекс учитывает фотографии', () {
+  test('Twitter: все варианты, только лучший использует туннель', () {
     final choices = twitterDownloadChoices(
       jsonEncode({
         'code': 200,
@@ -40,10 +40,13 @@ void main() {
       }),
       'https://x.com/test/status/123',
     );
-    expect(choices.single.label, '1280 × 720');
-    expect(choices.single.url.path, endsWith('/b.mp4'));
+    expect(choices.length, 2);
+    expect(choices.first.label, '1280 × 720');
+    expect(choices.first.url.path, endsWith('/b.mp4'));
+    expect(choices.last.label, '320 × 180');
+    expect(choices.last.sourceUrl, isNull);
     expect(
-      choices.single.sourceUrl.toString(),
+      choices.first.sourceUrl.toString(),
       'https://x.com/test/status/123/video/2',
     );
   });
@@ -79,6 +82,25 @@ void main() {
       await cubit.close();
     },
   );
+  test('Меньшее качество получает файл напрямую прежним способом', () async {
+    final url = Uri.parse('https://video.twimg.com/vid/320x180/a.mp4');
+    final cubit = ProbeCubit(
+      clientFactory: () => MockClient((request) async {
+        expect(request.method, 'GET');
+        expect(request.url, url);
+        return http.Response.bytes(
+          [1, 2, 3],
+          200,
+          headers: {'content-type': 'video/mp4'},
+        );
+      }),
+    );
+    await cubit.download(MediaLink('320 × 180', url, 'small.mp4'));
+    expect(cubit.state.file, [1, 2, 3]);
+    expect(cubit.state.attachmentUrl, isNull);
+    expect(cubit.state.downloadFailed, false);
+    await cubit.close();
+  });
   test('Redirect в проигрыватель не выдаётся за скачивание', () async {
     final cubit = ProbeCubit(
       clientFactory: () => MockClient(

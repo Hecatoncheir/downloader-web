@@ -453,7 +453,7 @@ class _Result extends StatelessWidget {
                     if (state.links.any((link) => link.sourceUrl != null)) ...[
                       const SizedBox(height: 16),
                       const Text(
-                        'Для Twitter доступно скачивание исходного качества каждого видео.',
+                        'Выберите подходящее разрешение и размер файла.',
                         style: TextStyle(fontSize: 12, color: muted),
                       ),
                     ],
