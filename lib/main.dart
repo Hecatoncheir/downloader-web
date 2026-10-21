@@ -7,6 +7,7 @@ import 'package:web/web.dart' as web;
 
 import 'api.dart';
 import 'brand.dart';
+import 'browser_link_input.dart';
 import 'link_input_cubit.dart';
 import 'probe_cubit.dart';
 
@@ -225,7 +226,19 @@ class _LinkFormState extends State<_LinkForm> {
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       if (!mounted || context.read<ProbeCubit>().state.busy) return;
-      controller.text = data?.text ?? '';
+      final text = data?.text;
+      if (text == null || text.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('В буфере нет текста. Скопируйте ссылку на видео.'),
+          ),
+        );
+        return;
+      }
+      controller.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(offset: text.length),
+      );
       changed(controller.text);
     } catch (_) {
       if (!mounted) return;
@@ -254,30 +267,13 @@ class _LinkFormState extends State<_LinkForm> {
           const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, box) {
-              final input = TextField(
-                controller: controller,
-                enabled: !state.busy,
-                onChanged: changed,
-                onSubmitted: state.busy
-                    ? null
-                    : (_) => context.read<ProbeCubit>().inspectAuto(
-                        controller.text,
-                      ),
-                style: const TextStyle(color: ink, fontSize: 15),
-                keyboardType: TextInputType.url,
-                autocorrect: false,
-                enableSuggestions: false,
+              final input = InputDecorator(
                 decoration: InputDecoration(
                   hintText: 'Вставьте ссылку сюда',
                   hintStyle: const TextStyle(color: muted),
                   prefixIcon: const Padding(
                     padding: EdgeInsets.all(14),
                     child: SoftIcon(Glyph.link, size: 20, color: muted),
-                  ),
-                  suffixIcon: IconButton(
-                    tooltip: 'Вставить ссылку',
-                    onPressed: state.busy ? null : paste,
-                    icon: const Icon(Icons.content_paste_rounded, size: 20),
                   ),
                   filled: true,
                   fillColor: background,
@@ -294,33 +290,26 @@ class _LinkFormState extends State<_LinkForm> {
                     borderSide: const BorderSide(color: line),
                   ),
                 ),
-              );
-              final button = FilledButton(
-                onPressed: state.busy
-                    ? null
-                    : () => context.read<ProbeCubit>().inspectAuto(
-                        controller.text,
-                      ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text('Скачать'),
-                    SizedBox(width: 12),
-                    SoftIcon(Glyph.download, color: background, size: 19),
-                  ],
+                child: BrowserLinkInput(
+                  controller: controller,
+                  enabled: !state.busy,
+                  onChanged: changed,
+                  onSubmitted: () =>
+                      context.read<ProbeCubit>().inspectAuto(controller.text),
                 ),
               );
+              final actions = _actions(state, box.maxWidth >= 300);
               if (box.maxWidth < 570) {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [input, const SizedBox(height: 12), button],
+                  children: [input, const SizedBox(height: 12), actions],
                 );
               }
               return Row(
                 children: [
                   Expanded(child: input),
                   const SizedBox(width: 12),
-                  SizedBox(height: 58, child: button),
+                  SizedBox(width: 284, height: 58, child: actions),
                 ],
               );
             },
@@ -354,6 +343,52 @@ class _LinkFormState extends State<_LinkForm> {
         ],
       ),
     ),
+  );
+
+  Widget _actions(ProbeState state, bool icons) => Row(
+    children: [
+      Expanded(
+        child: FilledButton(
+          onPressed: state.busy ? null : paste,
+          style: FilledButton.styleFrom(
+            backgroundColor: ink,
+            foregroundColor: background,
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Вставить'),
+              if (icons) ...[
+                const SizedBox(width: 8),
+                const Icon(Icons.content_paste_rounded, size: 18),
+              ],
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(width: 12),
+      Expanded(
+        child: FilledButton(
+          onPressed: state.busy
+              ? null
+              : () => context.read<ProbeCubit>().inspectAuto(controller.text),
+          style: FilledButton.styleFrom(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Text('Скачать'),
+              if (icons) ...[
+                const SizedBox(width: 8),
+                const SoftIcon(Glyph.download, color: background, size: 18),
+              ],
+            ],
+          ),
+        ),
+      ),
+    ],
   );
 }
 

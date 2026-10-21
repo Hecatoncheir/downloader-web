@@ -31,6 +31,15 @@
 
   <title>Downloader — видео по ссылке</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    @font-face {
+      font-family: "Downloader Input";
+      src: url("assets/assets/fonts/nunitosans.ttf") format("truetype");
+      font-display: swap;
+    }
+    input[aria-label="Ссылка на видео"]::placeholder { color: #a39b8b; opacity: 1; }
+    input[aria-label="Ссылка на видео"]:focus-visible { outline: 1px solid #f29370 !important; outline-offset: 4px; border-radius: 2px; }
+  </style>
 </head>
 <body>
   <!--
