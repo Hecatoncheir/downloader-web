@@ -777,6 +777,22 @@ class _Footer extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 14),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: Semantics(
+          link: true,
+          child: TextButton.icon(
+            onPressed: () => web.window.open(
+              'https://github.com/Hecatoncheir/downloader-web',
+              '_blank',
+              'noopener,noreferrer',
+            ),
+            icon: const Icon(Icons.open_in_new_rounded, size: 15),
+            label: const Text('Код на GitHub'),
+          ),
+        ),
+      ),
+      const SizedBox(height: 14),
       const Text(
         'Ссылку обработает сторонний сервис. Доступность видео зависит от источника. Сохраняйте материалы, на скачивание которых у вас есть право.',
         style: TextStyle(fontSize: 11, color: muted, height: 1.6),
