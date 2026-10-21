@@ -7,12 +7,16 @@ class MediaLink {
     this.filename, {
     this.details = 'MP4',
     this.estimatedBytes,
+    this.sourceUrl,
+    this.attachmentUrl,
   });
   final String label;
   final Uri url;
   final String filename;
   final String details;
   final int? estimatedBytes;
+  final Uri? sourceUrl;
+  final Uri? attachmentUrl;
 }
 
 enum VideoService { youtube, twitter }
@@ -101,6 +105,9 @@ List<MediaLink> parseLinks(String body, bool fx) {
         cobaltQuality(data['filename'] as String? ?? ''),
         httpsUri(data['url']),
         data['filename'] as String? ?? 'video.mp4',
+        attachmentUrl: data['status'] == 'tunnel'
+            ? httpsUri(data['url'])
+            : null,
       ),
     ];
   }
@@ -151,4 +158,52 @@ List<MediaLink> fxLinks(Map<String, dynamic> data) {
 int? estimatedSize(dynamic bitrate, dynamic duration) {
   if (bitrate is! num || duration is! num) return null;
   return (bitrate * duration / 8).round();
+}
+
+List<MediaLink> twitterDownloadChoices(String body, String input) {
+  final data = jsonDecode(body) as Map<String, dynamic>;
+  if (data['code'] != 200) throw FormatException('FxEmbed: ${data['message']}');
+  final videos = data['tweet']?['media']?['videos'] as List? ?? [];
+  final all = data['tweet']?['media']?['all'] as List? ?? [];
+  final post = twitterApi(input);
+  final result = <MediaLink>[];
+  for (var i = 0; i < videos.length; i++) {
+    final video = videos[i];
+    final format = _bestTwitterFormat(video);
+    if (format == null) continue;
+    final url = httpsUri(format['url'] as String);
+    final index = _twitterMediaIndex(video, all, i);
+    result.add(
+      MediaLink(
+        resolutionLabel(url.toString()),
+        url,
+        'twitter-${i + 1}.mp4',
+        details: 'MP4 · Видео ${i + 1} · исходное',
+        estimatedBytes: estimatedSize(format['bitrate'], video['duration']),
+        sourceUrl: Uri.https('x.com', '${post.path}/video/${index + 1}'),
+      ),
+    );
+  }
+  return result;
+}
+
+Map<String, dynamic>? _bestTwitterFormat(dynamic video) {
+  final formats = (video['formats'] as List? ?? [])
+      .where((f) => f['container'] == 'mp4')
+      .toList();
+  formats.sort(
+    (a, b) =>
+        ((b['bitrate'] as num?) ?? 0).compareTo((a['bitrate'] as num?) ?? 0),
+  );
+  if (formats.isNotEmpty) {
+    return Map<String, dynamic>.from(formats.first as Map);
+  }
+  if (video['url'] is String) return {'url': video['url']};
+  return null;
+}
+
+int _twitterMediaIndex(dynamic video, List all, int fallback) {
+  if (video['id'] == null) return fallback;
+  final index = all.indexWhere((item) => item['id'] == video['id']);
+  return index < 0 ? fallback : index;
 }

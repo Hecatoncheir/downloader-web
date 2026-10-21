@@ -75,14 +75,21 @@ class DownloaderApp extends StatelessWidget {
 void saveFile(ProbeState state) {
   final blob = web.Blob([state.file!.toJS].toJS);
   final url = web.URL.createObjectURL(blob);
-  (web.HTMLAnchorElement()
-        ..href = url
-        ..download = state.filename)
-      .click();
+  startFileDownload(Uri.parse(url), state.filename);
   Future<void>.delayed(
     const Duration(minutes: 1),
     () => web.URL.revokeObjectURL(url),
   );
+}
+
+void startFileDownload(Uri url, String filename) {
+  final anchor = web.HTMLAnchorElement()
+    ..href = url.toString()
+    ..download = filename
+    ..style.display = 'none';
+  web.document.body?.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
 }
 
 class DownloadPage extends StatelessWidget {
@@ -90,8 +97,16 @@ class DownloadPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => BlocListener<ProbeCubit, ProbeState>(
     listenWhen: (before, after) =>
-        after.file != null && !identical(before.file, after.file),
-    listener: (_, state) => saveFile(state),
+        (after.file != null && !identical(before.file, after.file)) ||
+        (after.attachmentUrl != null &&
+            before.attachmentUrl != after.attachmentUrl),
+    listener: (_, state) {
+      if (state.attachmentUrl != null) {
+        startFileDownload(state.attachmentUrl!, state.filename);
+      } else {
+        saveFile(state);
+      }
+    },
     child: Scaffold(
       body: SafeArea(
         child: LayoutBuilder(
@@ -414,6 +429,11 @@ class _Result extends StatelessWidget {
                   if (state.busy) _Progress(state: state),
                   if (!state.busy && state.links.isEmpty)
                     _Notice(state.message),
+                  if (state.attachmentUrl != null || state.downloadFailed)
+                    _Notice(
+                      state.message,
+                      success: state.attachmentUrl != null,
+                    ),
                   if (state.file != null) ...[
                     const _Notice(
                       'Готово. Файл передан браузеру для сохранения.',
@@ -430,6 +450,13 @@ class _Result extends StatelessWidget {
                     ),
                   ],
                   if (state.links.isNotEmpty) ...[
+                    if (state.links.any((link) => link.sourceUrl != null)) ...[
+                      const SizedBox(height: 16),
+                      const Text(
+                        'Для Twitter доступно скачивание исходного качества каждого видео.',
+                        style: TextStyle(fontSize: 12, color: muted),
+                      ),
+                    ],
                     const SizedBox(height: 24),
                     Row(
                       children: [
@@ -583,7 +610,7 @@ class _FormatCard extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           link.estimatedBytes == null
-              ? 'Размер станет известен при загрузке'
+              ? 'Размер не указан источником'
               : '≈ ${(link.estimatedBytes! / 1048576).toStringAsFixed(1)} МиБ',
           style: const TextStyle(fontSize: 12, color: muted),
         ),

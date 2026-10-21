@@ -16,12 +16,16 @@ class ProbeState {
     this.bytes = 0,
     this.file,
     this.filename = 'video.mp4',
+    this.attachmentUrl,
+    this.downloadFailed = false,
   });
   final bool busy;
   final String message, log, filename;
   final List<MediaLink> links;
   final int bytes;
   final Uint8List? file;
+  final Uri? attachmentUrl;
+  final bool downloadFailed;
 }
 
 class ProbeCubit extends Cubit<ProbeState> {
@@ -144,7 +148,9 @@ class ProbeCubit extends Cubit<ProbeState> {
       if (response.statusCode != 200) {
         throw FormatException('API: HTTP ${response.statusCode}');
       }
-      final links = parseLinks(response.body, fx);
+      final links = fx
+          ? twitterDownloadChoices(response.body, input)
+          : parseLinks(response.body, false);
       emit(
         ProbeState(
           message: links.isEmpty
@@ -178,7 +184,11 @@ class ProbeCubit extends Cubit<ProbeState> {
         'Accept': 'application/json',
         'Content-Type': 'application/json',
       },
-      body: jsonEncode({'url': source.toString(), 'videoQuality': quality}),
+      body: jsonEncode({
+        'url': source.toString(),
+        'videoQuality': quality,
+        'alwaysProxy': true,
+      }),
     );
   }
 
@@ -192,12 +202,26 @@ class ProbeCubit extends Cubit<ProbeState> {
     emit(
       ProbeState(
         busy: true,
-        message: 'Получение файла…',
+        message: 'Подготовка скачивания…',
         log: log,
         links: previous.links,
       ),
     );
     try {
+      final attachment = await _attachment(client, link);
+      if (generation != _generation) return;
+      if (attachment != null) {
+        emit(
+          ProbeState(
+            message: 'Скачивание передано браузеру. Проверьте список загрузок.',
+            links: previous.links,
+            log: log,
+            attachmentUrl: attachment.url,
+            filename: attachment.filename,
+          ),
+        );
+        return;
+      }
       final bytes = await _read(
         client,
         link.url,
@@ -225,6 +249,7 @@ class ProbeCubit extends Cubit<ProbeState> {
             log: '${state.log}\n$error',
             links: previous.links,
             bytes: state.bytes,
+            downloadFailed: true,
           ),
         );
       }
@@ -232,6 +257,34 @@ class ProbeCubit extends Cubit<ProbeState> {
       client.close();
       if (identical(_client, client)) _client = null;
     }
+  }
+
+  Future<MediaLink?> _attachment(http.Client client, MediaLink link) async {
+    if (link.attachmentUrl != null) {
+      return MediaLink(link.label, link.attachmentUrl!, link.filename);
+    }
+    final source = link.sourceUrl;
+    if (source == null) return null;
+    final response = await _request(
+      client,
+      Uri.https('rue-cobalt.xenon.zone', '/'),
+      source,
+      false,
+      'max',
+    ).timeout(const Duration(seconds: 40));
+    if (response.statusCode != 200) {
+      throw const FormatException(
+        'Не удалось подготовить скачивание. Попробуйте ещё раз позже.',
+      );
+    }
+    final choices = parseLinks(response.body, false);
+    if (choices.length != 1 || choices.single.attachmentUrl == null) {
+      throw const FormatException(
+        'Сервис не выдал ссылку для скачивания файла.',
+      );
+    }
+    final choice = choices.single;
+    return MediaLink(link.label, choice.attachmentUrl!, choice.filename);
   }
 
   Future<Uint8List> _read(
