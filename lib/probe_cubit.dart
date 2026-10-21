@@ -19,6 +19,8 @@ class ProbeState {
     this.attachmentUrl,
     this.downloadFailed = false,
     this.fallbackUrl,
+    this.shareFile,
+    this.shareSourceUrl,
   });
   final bool busy;
   final String message, log, filename;
@@ -28,6 +30,8 @@ class ProbeState {
   final Uri? attachmentUrl;
   final bool downloadFailed;
   final Uri? fallbackUrl;
+  final Uint8List? shareFile;
+  final Uri? shareSourceUrl;
 }
 
 class ProbeCubit extends Cubit<ProbeState> {
@@ -194,7 +198,7 @@ class ProbeCubit extends Cubit<ProbeState> {
     );
   }
 
-  Future<void> download(MediaLink link) async {
+  Future<void> download(MediaLink link, {bool forSharing = false}) async {
     final generation = ++_generation;
     final client = _clientFactory();
     _client?.close();
@@ -204,7 +208,9 @@ class ProbeCubit extends Cubit<ProbeState> {
     emit(
       ProbeState(
         busy: true,
-        message: 'Подготовка скачивания…',
+        message: forSharing
+            ? 'Загружаем видео для отправки…'
+            : 'Подготовка скачивания…',
         log: log,
         links: previous.links,
       ),
@@ -212,7 +218,7 @@ class ProbeCubit extends Cubit<ProbeState> {
     try {
       final attachment = await _attachment(client, link);
       if (generation != _generation) return;
-      if (attachment != null) {
+      if (attachment != null && !forSharing) {
         emit(
           ProbeState(
             message: 'Скачивание передано браузеру. Проверьте список загрузок.',
@@ -226,12 +232,25 @@ class ProbeCubit extends Cubit<ProbeState> {
       }
       final bytes = await _read(
         client,
-        link.url,
+        attachment?.url ?? link.url,
         generation,
         previous.links,
         log,
       ).timeout(const Duration(seconds: 120));
       if (generation != _generation) return;
+      if (forSharing) {
+        emit(
+          ProbeState(
+            message: 'Видео готово. Нажмите «Отправить видео» под выбранным вариантом.',
+            links: previous.links,
+            log: log,
+            shareFile: bytes,
+            shareSourceUrl: link.url,
+            filename: attachment?.filename ?? link.filename,
+          ),
+        );
+        return;
+      }
       emit(
         ProbeState(
           message: 'Файл получен целиком. Нажмите «Сохранить файл».',
@@ -247,12 +266,14 @@ class ProbeCubit extends Cubit<ProbeState> {
       if (generation == _generation) {
         emit(
           ProbeState(
-            message: _error(error),
+            message: forSharing
+                ? 'Не удалось получить видеофайл для отправки. Попробуйте ещё раз позже.'
+                : _error(error),
             log: '${state.log}\n$error',
             links: previous.links,
             bytes: state.bytes,
             downloadFailed: true,
-            fallbackUrl: link.url,
+            fallbackUrl: forSharing ? null : link.url,
           ),
         );
       }

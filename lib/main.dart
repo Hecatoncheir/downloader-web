@@ -25,26 +25,36 @@ void main() => runApp(
 Future<void> shareVideo(BuildContext context, MediaLink link) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
-    if (!web.window.navigator.hasProperty('share'.toJS).toDart) {
-      await Clipboard.setData(ClipboardData(text: link.url.toString()));
-      if (!context.mounted) return;
+    final navigator = web.window.navigator;
+    final cubit = context.read<ProbeCubit>();
+    final state = cubit.state;
+    final ready = state.shareSourceUrl == link.url && state.shareFile != null;
+    final filename = ready ? state.filename : link.filename;
+    final file = web.File(
+      [(ready ? state.shareFile! : Uint8List(0)).toJS].toJS,
+      filename,
+      web.FilePropertyBag(
+        type: filename.endsWith('.webm') ? 'video/webm' : 'video/mp4',
+      ),
+    );
+    final data = web.ShareData(files: [file].toJS);
+    if (!navigator.hasProperty('share'.toJS).toDart ||
+        !navigator.hasProperty('canShare'.toJS).toDart ||
+        !navigator.canShare(data)) {
       messenger.showSnackBar(
         const SnackBar(
           content: Text(
-            'Диалог отправки недоступен. Ссылка на видео скопирована.',
+            'Этот браузер не поддерживает отправку видеофайлов. Можно скачать видео на устройство.',
           ),
         ),
       );
       return;
     }
-    await web.window.navigator
-        .share(
-          web.ShareData(
-            title: 'Видео · ${link.label}',
-            url: link.url.toString(),
-          ),
-        )
-        .toDart;
+    if (!ready) {
+      await cubit.download(link, forSharing: true);
+      return;
+    }
+    await navigator.share(data).toDart;
   } catch (error) {
     if (!context.mounted || error.toString().contains('AbortError')) return;
     messenger.showSnackBar(
@@ -472,10 +482,14 @@ class _Result extends StatelessWidget {
                   if (state.busy) _Progress(state: state),
                   if (!state.busy && state.links.isEmpty)
                     _Notice(state.message),
-                  if (state.attachmentUrl != null || state.downloadFailed)
+                  if (state.attachmentUrl != null ||
+                      state.downloadFailed ||
+                      state.shareFile != null)
                     _Notice(
                       state.message,
-                      success: state.attachmentUrl != null,
+                      success:
+                          state.attachmentUrl != null ||
+                          state.shareFile != null,
                     ),
                   if (state.file != null) ...[
                     const _Notice(
@@ -692,9 +706,11 @@ class _FormatCard extends StatelessWidget {
         const SizedBox(height: 8),
         TextButton(
           onPressed: busy ? null : () => shareVideo(context, link),
-          child: const Text(
-            'Поделиться',
-            style: TextStyle(fontSize: 12, color: muted),
+          child: Text(
+            context.watch<ProbeCubit>().state.shareSourceUrl == link.url
+                ? 'Отправить видео'
+                : 'Поделиться',
+            style: const TextStyle(fontSize: 12, color: muted),
           ),
         ),
       ],

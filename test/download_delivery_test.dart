@@ -7,6 +7,60 @@ import 'package:downloader_lab/api.dart';
 import 'package:downloader_lab/probe_cubit.dart';
 
 void main() {
+  test(
+    'Поделиться получает файл из туннеля без сохранения и открытия ссылки',
+    () async {
+      final cubit = ProbeCubit(
+        clientFactory: () => MockClient((request) async {
+          if (request.method == 'POST') {
+            return http.Response(
+              '{"status":"tunnel","url":"https://rue-cobalt.xenon.zone/tunnel?id=share","filename":"video.mp4"}',
+              200,
+            );
+          }
+          expect(request.url.host, 'rue-cobalt.xenon.zone');
+          return http.Response.bytes(
+            [1, 2, 3],
+            200,
+            headers: {'content-type': 'video/mp4'},
+          );
+        }),
+      );
+      final link = MediaLink(
+        '720p',
+        Uri.parse('https://video.twimg.com/a.mp4'),
+        'video.mp4',
+        sourceUrl: Uri.parse('https://x.com/test/status/123/video/1'),
+      );
+      await cubit.download(link, forSharing: true);
+      expect(cubit.state.shareFile, [1, 2, 3]);
+      expect(cubit.state.shareSourceUrl, link.url);
+      expect(cubit.state.file, isNull);
+      expect(cubit.state.attachmentUrl, isNull);
+      expect(cubit.state.fallbackUrl, isNull);
+      await cubit.close();
+    },
+  );
+  test(
+    'Ошибка подготовки отправки не открывает видео и не подменяет файл ссылкой',
+    () async {
+      final cubit = ProbeCubit(
+        clientFactory: () => MockClient((_) async => http.Response('', 403)),
+      );
+      await cubit.download(
+        MediaLink(
+          '360p',
+          Uri.parse('https://video.twimg.com/a.mp4'),
+          'video.mp4',
+        ),
+        forSharing: true,
+      );
+      expect(cubit.state.downloadFailed, true);
+      expect(cubit.state.shareFile, isNull);
+      expect(cubit.state.fallbackUrl, isNull);
+      await cubit.close();
+    },
+  );
   test('Twitter: все варианты, только лучший использует туннель', () {
     final choices = twitterDownloadChoices(
       jsonEncode({
