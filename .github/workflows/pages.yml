@@ -44,6 +44,8 @@ jobs:
           base="/$REPOSITORY/"
           if [[ "$REPOSITORY" == *.github.io ]]; then base="/"; fi
           flutter build web --release --no-web-resources-cdn --base-href "$base"
+      - name: Уникальные имена файлов для обновления кэша
+        run: python tool/prepare_web_release.py
       - name: Метаданные публикации
         env:
           COMMIT: ${{ github.sha }}
