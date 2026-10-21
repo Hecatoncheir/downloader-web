@@ -52,3 +52,24 @@ python -m http.server 18765 --bind 127.0.0.1 --directory build/web
 
 GitHub Actions проверяет код и публикует `build/web` при изменении `main` или ручном запуске. Версия Flutter закреплена в `.github/workflows/pages.yml`. Успешные тесты и сборка не подтверждают доступность сторонних видеосервисов.
 
+
+## Автоматическая публикация версий
+
+GitHub Actions запускает анализатор, тесты и Web-сборку:
+
+- В pull request к `main` — только проверка, без публикации.
+- При отправке изменений в `main` — проверка и обновление GitHub Pages.
+- При отправке тега `v*` — проверка соответствия тега версии в `pubspec.yaml`, сборка и публикация этой версии.
+- Вручную через Actions → «Проверка и публикация Flutter Web» → Run workflow.
+
+Для выпуска следующей версии измените `version` в `pubspec.yaml`, например на `1.0.1+2`, затем выполните:
+
+```powershell
+git add pubspec.yaml
+git commit -m "Выпустить версию 1.0.1"
+git push origin main
+git tag -a v1.0.1 -m "Версия 1.0.1"
+git push origin v1.0.1
+```
+
+Тег должен совпадать с основной версией, без номера сборки после `+`. Несовпадение останавливает публикацию. Источник GitHub Pages — GitHub Actions. Точная версия, commit и ветка или тег опубликованной сборки доступны по адресу `https://hecatoncheir.github.io/downloader-web/deployment.json`.
