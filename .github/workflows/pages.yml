@@ -1,0 +1,44 @@
+name: Публикация Flutter Web
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: false
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.47.7'
+          cache: true
+      - run: flutter pub get
+      - run: flutter analyze
+      - run: flutter test
+      - name: Сборка с путём репозитория
+        env:
+          REPOSITORY: ${{ github.event.repository.name }}
+        shell: bash
+        run: |
+          base="/$REPOSITORY/"
+          if [[ "$REPOSITORY" == *.github.io ]]; then base="/"; fi
+          flutter build web --release --no-web-resources-cdn --base-href "$base"
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: build/web
+      - uses: actions/deploy-pages@v4
+        id: deployment
+
+
