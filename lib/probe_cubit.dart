@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 
@@ -283,6 +284,7 @@ class ProbeCubit extends Cubit<ProbeState> {
     } catch (error) {
       if (generation == _generation) {
         _generation++;
+        debugPrint('Ошибка получения видео: ${state.log}\n$error');
         emit(
           ProbeState(
             message: forSharing
