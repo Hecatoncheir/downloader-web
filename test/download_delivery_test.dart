@@ -8,6 +8,41 @@ import 'package:downloader_lab/api.dart';
 import 'package:downloader_lab/probe_cubit.dart';
 
 void main() {
+  for (final sharing in [false, true]) {
+    test('Ошибка подготовки: прямой файл, отправка=$sharing', () async {
+      final requests = <String>[];
+      final cubit = ProbeCubit(
+        clientFactory: () => MockClient((request) async {
+          requests.add(request.method);
+          if (request.method == 'POST') {
+            return http.Response(
+              '{"error":{"code":"error.api.fetch.empty"}}',
+              400,
+            );
+          }
+          return http.Response.bytes(
+            [1, 2, 3],
+            200,
+            headers: {'content-type': 'video/mp4'},
+          );
+        }),
+      );
+      await cubit.download(
+        MediaLink(
+          '720p',
+          Uri.parse('https://video.twimg.com/a.mp4'),
+          'a.mp4',
+          sourceUrl: Uri.parse('https://x.com/test/status/123/video/1'),
+        ),
+        forSharing: sharing,
+      );
+      expect(requests, ['POST', 'GET']);
+      expect(sharing ? cubit.state.shareFile : cubit.state.file, [1, 2, 3]);
+      expect(cubit.state.downloadFailed, false);
+      expect(cubit.state.fallbackUrl, isNull);
+      await cubit.close();
+    });
+  }
   test('Дозагрузка ждёт лимит сервиса и обновляет истёкшую ссылку', () async {
     final stream = StreamController<List<int>>();
     var preparations = 0;
@@ -326,27 +361,31 @@ void main() {
     expect(cubit.state.downloadFailed, false);
     await cubit.close();
   });
-  test('Redirect в проигрыватель не выдаётся за скачивание', () async {
-    final cubit = ProbeCubit(
-      clientFactory: () => MockClient(
-        (_) async => http.Response(
-          '{"status":"redirect","url":"https://video.twimg.com/a.mp4"}',
-          200,
+  test(
+    'Ответ redirect не подменяет файл, если прямое получение тоже не удалось',
+    () async {
+      final cubit = ProbeCubit(
+        clientFactory: () => MockClient(
+          (_) async => http.Response(
+            '{"status":"redirect","url":"https://video.twimg.com/a.mp4"}',
+            200,
+            headers: {'content-type': 'application/json'},
+          ),
         ),
-      ),
-    );
-    await cubit.download(
-      MediaLink(
-        '720p',
-        Uri.parse('https://video.twimg.com/a.mp4'),
-        'a.mp4',
-        sourceUrl: Uri.parse('https://x.com/test/status/123/video/1'),
-      ),
-    );
-    expect(cubit.state.attachmentUrl, isNull);
-    expect(cubit.state.downloadFailed, true);
-    expect(cubit.state.fallbackUrl, isNull);
-    expect(cubit.state.message, contains('не выдал'));
-    await cubit.close();
-  });
+      );
+      await cubit.download(
+        MediaLink(
+          '720p',
+          Uri.parse('https://video.twimg.com/a.mp4'),
+          'a.mp4',
+          sourceUrl: Uri.parse('https://x.com/test/status/123/video/1'),
+        ),
+      );
+      expect(cubit.state.attachmentUrl, isNull);
+      expect(cubit.state.downloadFailed, true);
+      expect(cubit.state.fallbackUrl, isNull);
+      expect(cubit.state.message, contains('HTML или JSON'));
+      await cubit.close();
+    },
+  );
 }

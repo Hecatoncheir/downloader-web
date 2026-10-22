@@ -209,7 +209,7 @@ class ProbeCubit extends Cubit<ProbeState> {
     _client?.close();
     _client = client;
     final previous = state;
-    final log = '${previous.log}\nGET ${link.url}\n';
+    var log = '${previous.log}\nGET ${link.url}\n';
     emit(
       ProbeState(
         busy: true,
@@ -221,7 +221,13 @@ class ProbeCubit extends Cubit<ProbeState> {
       ),
     );
     try {
-      final attachment = await _attachment(client, link);
+      MediaLink? attachment;
+      try {
+        attachment = await _attachment(client, link);
+      } catch (error) {
+        if (generation != _generation) return;
+        log += 'Подготовка туннеля: $error\nПолучаем файл напрямую.\n';
+      }
       if (generation != _generation) return;
       Uint8List bytes;
       try {
