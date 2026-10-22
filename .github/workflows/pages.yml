@@ -36,6 +36,9 @@ jobs:
       - run: flutter pub get
       - run: flutter analyze
       - run: flutter test
+      - name: Проверка браузерного HTTP-клиента
+        timeout-minutes: 5
+        run: flutter test --platform chrome test/transport_client_web_test.dart
       - name: Сборка с путём репозитория
         env:
           REPOSITORY: ${{ github.event.repository.name }}

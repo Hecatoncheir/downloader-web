@@ -7,6 +7,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 
 import 'api.dart';
+import 'transport_client.dart';
 
 class ProbeState {
   const ProbeState({
@@ -39,7 +40,7 @@ class ProbeCubit extends Cubit<ProbeState> {
   ProbeCubit({
     http.Client Function()? clientFactory,
     this.transferIdleTimeout = const Duration(seconds: 20),
-  }) : _clientFactory = clientFactory ?? http.Client.new,
+  }) : _clientFactory = clientFactory ?? createTransportClient,
        super(const ProbeState());
   final http.Client Function() _clientFactory;
   final Duration transferIdleTimeout;
