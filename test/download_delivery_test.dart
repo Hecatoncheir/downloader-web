@@ -56,50 +56,52 @@ void main() {
     await cubit.close();
   });
 
-  test('Зависшая передача дозагружается частями без потери байтов', () async {
-    final stream = StreamController<List<int>>();
-    final expected = List.generate(40000, (index) => index % 251);
-    final ranges = <String>[];
-    final cubit = ProbeCubit(
-      transferIdleTimeout: const Duration(milliseconds: 30),
-      clientFactory: () => MockClient.streaming((request, body) async {
-        final range = request.headers['Range'];
-        if (range == null) {
-          stream.add(expected.sublist(0, 100));
+  test(
+    'Кнопка скачивания получает все части файла без потери байтов',
+    () async {
+      final stream = StreamController<List<int>>();
+      final expected = List.generate(40000, (index) => index % 251);
+      final ranges = <String>[];
+      final cubit = ProbeCubit(
+        transferIdleTimeout: const Duration(milliseconds: 30),
+        clientFactory: () => MockClient.streaming((request, body) async {
+          final range = request.headers['Range'];
+          if (range == null) {
+            stream.add(expected.sublist(0, 100));
+            return http.StreamedResponse(
+              stream.stream,
+              200,
+              contentLength: expected.length,
+              headers: {'content-type': 'video/mp4'},
+            );
+          }
+          ranges.add(range);
+          final bounds = range.substring(6).split('-').map(int.parse).toList();
+          final part = expected.sublist(bounds[0], bounds[1] + 1);
           return http.StreamedResponse(
-            stream.stream,
-            200,
-            contentLength: expected.length,
-            headers: {'content-type': 'video/mp4'},
+            Stream.value(part),
+            206,
+            contentLength: part.length,
           );
-        }
-        ranges.add(range);
-        final bounds = range.substring(6).split('-').map(int.parse).toList();
-        final part = expected.sublist(bounds[0], bounds[1] + 1);
-        return http.StreamedResponse(
-          Stream.value(part),
-          206,
-          contentLength: part.length,
-        );
-      }),
-    );
-    await cubit.download(
-      MediaLink(
-        '720p',
-        Uri.parse('https://example.com/video.mp4'),
-        'video.mp4',
-      ),
-      forSharing: true,
-    );
-    expect(cubit.state.shareFile, expected);
-    expect(ranges, [
-      'bytes=100-16483',
-      'bytes=16484-32867',
-      'bytes=32868-39999',
-    ]);
-    await stream.close();
-    await cubit.close();
-  });
+        }),
+      );
+      await cubit.download(
+        MediaLink(
+          '720p',
+          Uri.parse('https://example.com/video.mp4'),
+          'video.mp4',
+        ),
+      );
+      expect(cubit.state.file, expected);
+      expect(ranges, [
+        'bytes=100-16483',
+        'bytes=16484-32867',
+        'bytes=32868-39999',
+      ]);
+      await stream.close();
+      await cubit.close();
+    },
+  );
 
   test(
     'Зависший поток завершается ошибкой и снимает состояние загрузки',
@@ -266,12 +268,20 @@ void main() {
     );
   });
   test(
-    'Скачивание Twitter готовит attachment, не запрашивая video.twimg.com',
+    'Скачивание Twitter получает весь файл из туннеля перед сохранением',
     () async {
       final requests = <http.Request>[];
       final cubit = ProbeCubit(
         clientFactory: () => MockClient((request) async {
           requests.add(request);
+          if (request.method == 'GET') {
+            expect(request.url.host, 'rue-cobalt.xenon.zone');
+            return http.Response.bytes(
+              [1, 2, 3],
+              200,
+              headers: {'content-type': 'video/mp4'},
+            );
+          }
           expect(request.method, 'POST');
           final data = jsonDecode(request.body);
           expect(data['alwaysProxy'], true);
@@ -290,10 +300,10 @@ void main() {
           sourceUrl: Uri.parse('https://x.com/test/status/123/video/2'),
         ),
       );
-      expect(requests.length, 1);
-      expect(cubit.state.attachmentUrl?.host, 'rue-cobalt.xenon.zone');
-      expect(cubit.state.file, isNull);
-      expect(cubit.state.message, isNot(contains('целиком')));
+      expect(requests.length, 2);
+      expect(cubit.state.attachmentUrl, isNull);
+      expect(cubit.state.file, [1, 2, 3]);
+      expect(cubit.state.filename, 'twitter.mp4');
       await cubit.close();
     },
   );
@@ -335,7 +345,7 @@ void main() {
     );
     expect(cubit.state.attachmentUrl, isNull);
     expect(cubit.state.downloadFailed, true);
-    expect(cubit.state.fallbackUrl.toString(), 'https://video.twimg.com/a.mp4');
+    expect(cubit.state.fallbackUrl, isNull);
     expect(cubit.state.message, contains('не выдал'));
     await cubit.close();
   });

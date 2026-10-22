@@ -221,18 +221,6 @@ class ProbeCubit extends Cubit<ProbeState> {
     try {
       final attachment = await _attachment(client, link);
       if (generation != _generation) return;
-      if (attachment != null && !forSharing) {
-        emit(
-          ProbeState(
-            message: 'Скачивание передано браузеру. Проверьте список загрузок.',
-            links: previous.links,
-            log: log,
-            attachmentUrl: attachment.url,
-            filename: attachment.filename,
-          ),
-        );
-        return;
-      }
       Uint8List bytes;
       try {
         bytes = await _read(
@@ -244,8 +232,7 @@ class ProbeCubit extends Cubit<ProbeState> {
           refreshLink: link.sourceUrl == null ? null : link,
         ).timeout(const Duration(minutes: 5));
       } catch (error) {
-        if (!forSharing ||
-            attachment == null ||
+        if (attachment == null ||
             attachment.url == link.url ||
             generation != _generation) {
           rethrow;
@@ -290,7 +277,7 @@ class ProbeCubit extends Cubit<ProbeState> {
           links: previous.links,
           bytes: bytes.length,
           file: bytes,
-          filename: link.filename,
+          filename: attachment?.filename ?? link.filename,
         ),
       );
     } catch (error) {
@@ -307,7 +294,6 @@ class ProbeCubit extends Cubit<ProbeState> {
             links: previous.links,
             bytes: state.bytes,
             downloadFailed: true,
-            fallbackUrl: forSharing ? null : link.url,
           ),
         );
       }

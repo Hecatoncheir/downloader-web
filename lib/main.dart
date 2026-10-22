@@ -118,7 +118,10 @@ class DownloaderApp extends StatelessWidget {
 }
 
 void saveFile(ProbeState state) {
-  final blob = web.Blob([state.file!.toJS].toJS);
+  final blob = web.Blob(
+    [state.file!.toJS].toJS,
+    web.BlobPropertyBag(type: videoMimeType(state.filename)),
+  );
   final url = web.URL.createObjectURL(blob);
   startFileDownload(Uri.parse(url), state.filename);
   Future<void>.delayed(
