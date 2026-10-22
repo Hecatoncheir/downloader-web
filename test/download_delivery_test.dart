@@ -36,7 +36,7 @@ void main() {
         ),
         forSharing: sharing,
       );
-      expect(requests, ['POST', 'GET']);
+      expect(requests, sharing ? ['POST', 'GET'] : ['GET']);
       expect(sharing ? cubit.state.shareFile : cubit.state.file, [1, 2, 3]);
       expect(cubit.state.downloadFailed, false);
       expect(cubit.state.fallbackUrl, isNull);
@@ -302,46 +302,46 @@ void main() {
       'https://x.com/test/status/123/video/2',
     );
   });
-  test(
-    'Скачивание Twitter получает весь файл из туннеля перед сохранением',
-    () async {
-      final requests = <http.Request>[];
-      final cubit = ProbeCubit(
-        clientFactory: () => MockClient((request) async {
-          requests.add(request);
-          if (request.method == 'GET') {
-            expect(request.url.host, 'rue-cobalt.xenon.zone');
-            return http.Response.bytes(
-              [1, 2, 3],
-              200,
-              headers: {'content-type': 'video/mp4'},
-            );
-          }
-          expect(request.method, 'POST');
-          final data = jsonDecode(request.body);
-          expect(data['alwaysProxy'], true);
-          expect(data['url'], 'https://x.com/test/status/123/video/2');
-          return http.Response(
-            '{"status":"tunnel","url":"https://rue-cobalt.xenon.zone/tunnel?id=1","filename":"twitter.mp4"}',
+  test('При ошибке прямой загрузки Twitter получает файл из туннеля', () async {
+    final requests = <http.Request>[];
+    final cubit = ProbeCubit(
+      clientFactory: () => MockClient((request) async {
+        requests.add(request);
+        if (request.url.host == 'video.twimg.com') {
+          return http.Response('', 403);
+        }
+        if (request.method == 'GET') {
+          expect(request.url.host, 'rue-cobalt.xenon.zone');
+          return http.Response.bytes(
+            [1, 2, 3],
             200,
+            headers: {'content-type': 'video/mp4'},
           );
-        }),
-      );
-      await cubit.download(
-        MediaLink(
-          '1280 × 720',
-          Uri.parse('https://video.twimg.com/vid/1280x720/a.mp4'),
-          'original.mp4',
-          sourceUrl: Uri.parse('https://x.com/test/status/123/video/2'),
-        ),
-      );
-      expect(requests.length, 2);
-      expect(cubit.state.attachmentUrl, isNull);
-      expect(cubit.state.file, [1, 2, 3]);
-      expect(cubit.state.filename, 'twitter.mp4');
-      await cubit.close();
-    },
-  );
+        }
+        expect(request.method, 'POST');
+        final data = jsonDecode(request.body);
+        expect(data['alwaysProxy'], true);
+        expect(data['url'], 'https://x.com/test/status/123/video/2');
+        return http.Response(
+          '{"status":"tunnel","url":"https://rue-cobalt.xenon.zone/tunnel?id=1","filename":"twitter.mp4"}',
+          200,
+        );
+      }),
+    );
+    await cubit.download(
+      MediaLink(
+        '1280 × 720',
+        Uri.parse('https://video.twimg.com/vid/1280x720/a.mp4'),
+        'original.mp4',
+        sourceUrl: Uri.parse('https://x.com/test/status/123/video/2'),
+      ),
+    );
+    expect(requests.map((r) => r.method), ['GET', 'POST', 'GET']);
+    expect(cubit.state.attachmentUrl, isNull);
+    expect(cubit.state.file, [1, 2, 3]);
+    expect(cubit.state.filename, 'twitter.mp4');
+    await cubit.close();
+  });
   test('Меньшее качество получает файл напрямую прежним способом', () async {
     final url = Uri.parse('https://video.twimg.com/vid/320x180/a.mp4');
     final cubit = ProbeCubit(
@@ -384,7 +384,7 @@ void main() {
       expect(cubit.state.attachmentUrl, isNull);
       expect(cubit.state.downloadFailed, true);
       expect(cubit.state.fallbackUrl, isNull);
-      expect(cubit.state.message, contains('HTML или JSON'));
+      expect(cubit.state.message, contains('не выдал ссылку'));
       await cubit.close();
     },
   );

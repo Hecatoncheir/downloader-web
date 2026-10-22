@@ -221,9 +221,10 @@ class ProbeCubit extends Cubit<ProbeState> {
       ),
     );
     try {
+      final directFirst = !forSharing && link.sourceUrl != null;
       MediaLink? attachment;
       try {
-        attachment = await _attachment(client, link);
+        if (!directFirst) attachment = await _attachment(client, link);
       } catch (error) {
         if (generation != _generation) return;
         log += 'Подготовка туннеля: $error\nПолучаем файл напрямую.\n';
@@ -240,9 +241,9 @@ class ProbeCubit extends Cubit<ProbeState> {
           refreshLink: link.sourceUrl == null ? null : link,
         ).timeout(const Duration(minutes: 5));
       } catch (error) {
-        if (attachment == null ||
-            attachment.url == link.url ||
-            generation != _generation) {
+        if (generation != _generation ||
+            (!directFirst &&
+                (attachment == null || attachment.url == link.url))) {
           rethrow;
         }
         // Останавливаем предыдущую передачу перед запросом к источнику.
@@ -251,12 +252,16 @@ class ProbeCubit extends Cubit<ProbeState> {
         final directClient = _clientFactory();
         _client = directClient;
         try {
+          if (directFirst) {
+            attachment = await _attachment(directClient, link);
+            if (attachment == null) rethrow;
+          }
           bytes = await _read(
             directClient,
-            link.url,
+            directFirst ? attachment!.url : link.url,
             generation,
             previous.links,
-            '$log\nТуннель: $error\nПолучаем файл напрямую.\n',
+            '$log\nОшибка передачи: $error\nПробуем запасной источник.\n',
           ).timeout(const Duration(minutes: 5));
         } finally {
           directClient.close();
