@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -7,6 +8,166 @@ import 'package:downloader_lab/api.dart';
 import 'package:downloader_lab/probe_cubit.dart';
 
 void main() {
+  test('Дозагрузка ждёт лимит сервиса и обновляет истёкшую ссылку', () async {
+    final stream = StreamController<List<int>>();
+    var preparations = 0;
+    var parts = 0;
+    final cubit = ProbeCubit(
+      transferIdleTimeout: const Duration(milliseconds: 30),
+      clientFactory: () => MockClient.streaming((request, body) async {
+        if (request.method == 'POST') {
+          preparations++;
+          final data = utf8.encode(
+            '{"status":"tunnel","url":"https://example.com/tunnel$preparations","filename":"video.mp4"}',
+          );
+          return http.StreamedResponse(Stream.value(data), 200);
+        }
+        if (request.headers['Range'] == null) {
+          stream.add([1]);
+          return http.StreamedResponse(stream.stream, 200, contentLength: 3);
+        }
+        parts++;
+        if (parts == 1) {
+          return http.StreamedResponse(
+            Stream.empty(),
+            429,
+            headers: {'retry-after': '1'},
+          );
+        }
+        if (parts == 2) return http.StreamedResponse(Stream.empty(), 404);
+        expect(request.url.path, '/tunnel2');
+        expect(request.headers['Range'], 'bytes=1-2');
+        return http.StreamedResponse(Stream.value([2, 3]), 206);
+      }),
+    );
+    await cubit.download(
+      MediaLink(
+        '720p',
+        Uri.parse('https://video.twimg.com/video.mp4'),
+        'video.mp4',
+        sourceUrl: Uri.parse('https://x.com/test/status/123'),
+      ),
+      forSharing: true,
+    );
+    expect(cubit.state.shareFile, [1, 2, 3]);
+    expect(preparations, 2);
+    expect(parts, 3);
+    await stream.close();
+    await cubit.close();
+  });
+
+  test('Зависшая передача дозагружается частями без потери байтов', () async {
+    final stream = StreamController<List<int>>();
+    final expected = List.generate(40000, (index) => index % 251);
+    final ranges = <String>[];
+    final cubit = ProbeCubit(
+      transferIdleTimeout: const Duration(milliseconds: 30),
+      clientFactory: () => MockClient.streaming((request, body) async {
+        final range = request.headers['Range'];
+        if (range == null) {
+          stream.add(expected.sublist(0, 100));
+          return http.StreamedResponse(
+            stream.stream,
+            200,
+            contentLength: expected.length,
+            headers: {'content-type': 'video/mp4'},
+          );
+        }
+        ranges.add(range);
+        final bounds = range.substring(6).split('-').map(int.parse).toList();
+        final part = expected.sublist(bounds[0], bounds[1] + 1);
+        return http.StreamedResponse(
+          Stream.value(part),
+          206,
+          contentLength: part.length,
+        );
+      }),
+    );
+    await cubit.download(
+      MediaLink(
+        '720p',
+        Uri.parse('https://example.com/video.mp4'),
+        'video.mp4',
+      ),
+      forSharing: true,
+    );
+    expect(cubit.state.shareFile, expected);
+    expect(ranges, [
+      'bytes=100-16483',
+      'bytes=16484-32867',
+      'bytes=32868-39999',
+    ]);
+    await stream.close();
+    await cubit.close();
+  });
+
+  test(
+    'Зависший поток завершается ошибкой и снимает состояние загрузки',
+    () async {
+      final stream = StreamController<List<int>>();
+      final cubit = ProbeCubit(
+        transferIdleTimeout: const Duration(milliseconds: 30),
+        clientFactory: () => MockClient.streaming(
+          (request, body) async => http.StreamedResponse(
+            stream.stream,
+            200,
+            headers: {'content-type': 'video/mp4'},
+          ),
+        ),
+      );
+      await cubit.download(
+        MediaLink(
+          '720p',
+          Uri.parse('https://example.com/video.mp4'),
+          'video.mp4',
+        ),
+        forSharing: true,
+      );
+      expect(cubit.state.busy, false);
+      expect(cubit.state.downloadFailed, true);
+      expect(cubit.state.message, contains('перестал отвечать'));
+      expect(cubit.state.shareFile, isNull);
+      await stream.close();
+      await cubit.close();
+    },
+  );
+
+  test('При ошибке туннеля отправка получает сам файл напрямую', () async {
+    final requests = <Uri>[];
+    final cubit = ProbeCubit(
+      clientFactory: () => MockClient((request) async {
+        requests.add(request.url);
+        if (request.method == 'POST') {
+          return http.Response(
+            '{"status":"tunnel","url":"https://example.com/tunnel","filename":"video.mp4"}',
+            200,
+          );
+        }
+        if (request.url.path == '/tunnel') return http.Response('', 502);
+        return http.Response.bytes(
+          [1, 2, 3],
+          200,
+          headers: {'content-type': 'video/mp4'},
+        );
+      }),
+    );
+    final url = Uri.parse('https://video.twimg.com/video.mp4');
+    await cubit.download(
+      MediaLink(
+        '720p',
+        url,
+        'video.mp4',
+        sourceUrl: Uri.parse('https://x.com/test/status/123'),
+      ),
+      forSharing: true,
+    );
+    expect(requests.last, url);
+    expect(cubit.state.shareFile, [1, 2, 3]);
+    expect(cubit.state.shareSourceUrl, url);
+    expect(cubit.state.busy, false);
+    expect(cubit.state.fallbackUrl, isNull);
+    await cubit.close();
+  });
   test(
     'Поделиться получает файл из туннеля без сохранения и открытия ссылки',
     () async {

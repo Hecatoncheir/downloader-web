@@ -35,10 +35,13 @@ class ProbeState {
 }
 
 class ProbeCubit extends Cubit<ProbeState> {
-  ProbeCubit({http.Client Function()? clientFactory})
-    : _clientFactory = clientFactory ?? http.Client.new,
-      super(const ProbeState());
+  ProbeCubit({
+    http.Client Function()? clientFactory,
+    this.transferIdleTimeout = const Duration(seconds: 20),
+  }) : _clientFactory = clientFactory ?? http.Client.new,
+       super(const ProbeState());
   final http.Client Function() _clientFactory;
+  final Duration transferIdleTimeout;
   http.Client? _client;
   int _generation = 0;
   Future<void> inspectAuto(String input) async {
@@ -199,7 +202,7 @@ class ProbeCubit extends Cubit<ProbeState> {
   }
 
   Future<void> download(MediaLink link, {bool forSharing = false}) async {
-    final generation = ++_generation;
+    var generation = ++_generation;
     final client = _clientFactory();
     _client?.close();
     _client = client;
@@ -209,7 +212,7 @@ class ProbeCubit extends Cubit<ProbeState> {
       ProbeState(
         busy: true,
         message: forSharing
-            ? 'Загружаем видео для отправки…'
+            ? 'Готовим ссылку на видео для отправки…'
             : 'Подготовка скачивания…',
         log: log,
         links: previous.links,
@@ -230,13 +233,41 @@ class ProbeCubit extends Cubit<ProbeState> {
         );
         return;
       }
-      final bytes = await _read(
-        client,
-        attachment?.url ?? link.url,
-        generation,
-        previous.links,
-        log,
-      ).timeout(const Duration(seconds: 120));
+      Uint8List bytes;
+      try {
+        bytes = await _read(
+          client,
+          attachment?.url ?? link.url,
+          generation,
+          previous.links,
+          log,
+          refreshLink: link.sourceUrl == null ? null : link,
+        ).timeout(const Duration(minutes: 5));
+      } catch (error) {
+        if (!forSharing ||
+            attachment == null ||
+            attachment.url == link.url ||
+            generation != _generation) {
+          rethrow;
+        }
+        // Останавливаем предыдущую передачу перед запросом к источнику.
+        generation = ++_generation;
+        client.close();
+        final directClient = _clientFactory();
+        _client = directClient;
+        try {
+          bytes = await _read(
+            directClient,
+            link.url,
+            generation,
+            previous.links,
+            '$log\nТуннель: $error\nПолучаем файл напрямую.\n',
+          ).timeout(const Duration(minutes: 5));
+        } finally {
+          directClient.close();
+          if (identical(_client, directClient)) _client = null;
+        }
+      }
       if (generation != _generation) return;
       if (forSharing) {
         emit(
@@ -264,10 +295,13 @@ class ProbeCubit extends Cubit<ProbeState> {
       );
     } catch (error) {
       if (generation == _generation) {
+        _generation++;
         emit(
           ProbeState(
             message: forSharing
-                ? 'Не удалось получить видеофайл для отправки. Попробуйте ещё раз позже.'
+                ? error is TimeoutException
+                      ? 'Сервер видео перестал отвечать. Попробуйте ещё раз или выберите другое качество.'
+                      : 'Не удалось получить видеофайл для отправки. Попробуйте другое качество или сеть.'
                 : _error(error),
             log: '${state.log}\n$error',
             links: previous.links,
@@ -316,9 +350,22 @@ class ProbeCubit extends Cubit<ProbeState> {
     Uri url,
     int generation,
     List<MediaLink> links,
-    String log,
-  ) async {
-    final response = await client.send(http.Request('GET', url));
+    String log, {
+    MediaLink? refreshLink,
+  }) async {
+    if (generation != _generation) throw const FormatException('Отменено');
+    emit(
+      ProbeState(
+        busy: true,
+        message: 'Получаем видеофайл…',
+        links: links,
+        log: log,
+      ),
+    );
+    final response = await client
+        .send(http.Request('GET', url))
+        .timeout(transferIdleTimeout);
+    if (generation != _generation) throw const FormatException('Отменено');
     log +=
         'HTTP ${response.statusCode} · ${response.headers['content-type'] ?? 'тип не указан'}\n';
     if (response.statusCode != 200) {
@@ -332,22 +379,42 @@ class ProbeCubit extends Cubit<ProbeState> {
     }
     final builder = BytesBuilder(copy: false);
     final clock = Stopwatch()..start();
-    await for (final chunk in response.stream) {
-      if (generation != _generation) throw const FormatException('Отменено');
-      builder.add(chunk);
-      if (builder.length > 200 * 1024 * 1024) {
-        throw const FormatException('Превышен тестовый лимит 200 МиБ.');
+    try {
+      await for (final chunk in response.stream.timeout(transferIdleTimeout)) {
+        if (generation != _generation) throw const FormatException('Отменено');
+        builder.add(chunk);
+        if (builder.length > 200 * 1024 * 1024) {
+          throw const FormatException('Превышен тестовый лимит 200 МиБ.');
+        }
+        if (clock.elapsedMilliseconds < 200) continue;
+        clock.reset();
+        emit(
+          ProbeState(
+            busy: true,
+            message: 'Получение файла…',
+            log: log,
+            links: links,
+            bytes: builder.length,
+          ),
+        );
       }
-      if (clock.elapsedMilliseconds < 200) continue;
-      clock.reset();
-      emit(
-        ProbeState(
-          busy: true,
-          message: 'Получение файла…',
-          log: log,
-          links: links,
-          bytes: builder.length,
-        ),
+    } on TimeoutException {
+      final total = response.contentLength;
+      if (generation != _generation ||
+          total == null ||
+          total <= builder.length ||
+          total > 200 * 1024 * 1024) {
+        rethrow;
+      }
+      client.close();
+      return _readRemaining(
+        url,
+        builder,
+        total,
+        generation,
+        links,
+        log,
+        refreshLink,
       );
     }
     if (builder.isEmpty) {
@@ -356,6 +423,85 @@ class ProbeCubit extends Cubit<ProbeState> {
     final expected = response.contentLength;
     if (expected != null && builder.length != expected) {
       throw const FormatException('Файл получен не полностью.');
+    }
+    return builder.takeBytes();
+  }
+
+  Future<Uint8List> _readRemaining(
+    Uri url,
+    BytesBuilder builder,
+    int total,
+    int generation,
+    List<MediaLink> links,
+    String log,
+    MediaLink? refreshLink,
+  ) async {
+    var refreshes = 0;
+    while (builder.length < total) {
+      if (generation != _generation) throw const FormatException('Отменено');
+      final start = builder.length;
+      final end = (start + 16383).clamp(0, total - 1);
+      final request = http.Request('GET', url)
+        ..headers['Range'] = 'bytes=$start-$end';
+      final partClient = _clientFactory();
+      _client = partClient;
+      late Uint8List part;
+      try {
+        final response = await partClient
+            .send(request)
+            .timeout(transferIdleTimeout);
+        if ((response.statusCode == 404 || response.statusCode == 410) &&
+            refreshLink != null &&
+            refreshes < 2) {
+          final renewed = await _attachment(partClient, refreshLink);
+          if (renewed == null) {
+            throw const FormatException('Не удалось обновить ссылку на файл.');
+          }
+          url = renewed.url;
+          refreshes++;
+          continue;
+        }
+        if (response.statusCode == 429) {
+          final seconds =
+              int.tryParse(response.headers['retry-after'] ?? '') ??
+              int.tryParse(response.headers['ratelimit-reset'] ?? '') ??
+              60;
+          emit(
+            ProbeState(
+              busy: true,
+              message:
+                  'Сервис ограничил частоту запросов. Продолжим через ${seconds.clamp(1, 60)} с…',
+              bytes: builder.length,
+              links: links,
+              log: log,
+            ),
+          );
+          partClient.close();
+          await Future<void>.delayed(Duration(seconds: seconds.clamp(1, 60)));
+          continue;
+        }
+        if (response.statusCode != 206) {
+          throw FormatException('Дозагрузка: HTTP ${response.statusCode}.');
+        }
+        part = await response.stream.toBytes().timeout(transferIdleTimeout);
+      } finally {
+        partClient.close();
+        if (identical(_client, partClient)) _client = null;
+      }
+      if (generation != _generation) throw const FormatException('Отменено');
+      if (part.length != end - start + 1) {
+        throw const FormatException('Часть видео получена не полностью.');
+      }
+      builder.add(part);
+      emit(
+        ProbeState(
+          busy: true,
+          message: 'Дозагружаем видео небольшими частями…',
+          bytes: builder.length,
+          links: links,
+          log: log,
+        ),
+      );
     }
     return builder.takeBytes();
   }
