@@ -350,30 +350,6 @@ class ProbeCubit extends Cubit<ProbeState> {
         log: log,
       ),
     );
-    if (kIsWeb &&
-        url.host == 'rue-cobalt.xenon.zone' &&
-        url.path == '/tunnel') {
-      final metadata = await client
-          .send(http.Request('HEAD', url))
-          .timeout(transferIdleTimeout);
-      final total = metadata.contentLength;
-      client.close();
-      if (metadata.statusCode != 200 ||
-          total == null ||
-          total <= 0 ||
-          total > 200 * 1024 * 1024) {
-        throw const FormatException('Не удалось определить размер видеофайла.');
-      }
-      return _readRemaining(
-        url,
-        BytesBuilder(copy: false),
-        total,
-        generation,
-        links,
-        log,
-        refreshLink,
-      );
-    }
     final response = await client
         .send(http.Request('GET', url))
         .timeout(transferIdleTimeout);
@@ -449,22 +425,11 @@ class ProbeCubit extends Cubit<ProbeState> {
     MediaLink? refreshLink,
   ) async {
     var refreshes = 0;
-    var timeouts = 0;
     while (builder.length < total) {
       if (generation != _generation) throw const FormatException('Отменено');
       final start = builder.length;
       final end = (start + 16383).clamp(0, total - 1);
-      // Различаем части в кэше браузера: туннель не отдаёт Content-Range.
-      final partUrl =
-          url.host == 'rue-cobalt.xenon.zone' && url.path == '/tunnel'
-          ? url.replace(
-              queryParameters: {
-                ...url.queryParameters,
-                '_downloadPart': '$start-$timeouts',
-              },
-            )
-          : url;
-      final request = http.Request('GET', partUrl)
+      final request = http.Request('GET', url)
         ..headers['Range'] = 'bytes=$start-$end';
       final partClient = _clientFactory();
       _client = partClient;
@@ -507,9 +472,6 @@ class ProbeCubit extends Cubit<ProbeState> {
           throw FormatException('Дозагрузка: HTTP ${response.statusCode}.');
         }
         part = await response.stream.toBytes().timeout(transferIdleTimeout);
-      } on TimeoutException {
-        if (++timeouts > 2) rethrow;
-        continue;
       } finally {
         partClient.close();
         if (identical(_client, partClient)) _client = null;
@@ -519,7 +481,6 @@ class ProbeCubit extends Cubit<ProbeState> {
         throw const FormatException('Часть видео получена не полностью.');
       }
       builder.add(part);
-      timeouts = 0;
       emit(
         ProbeState(
           busy: true,
