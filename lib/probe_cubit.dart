@@ -429,7 +429,17 @@ class ProbeCubit extends Cubit<ProbeState> {
       if (generation != _generation) throw const FormatException('Отменено');
       final start = builder.length;
       final end = (start + 16383).clamp(0, total - 1);
-      final request = http.Request('GET', url)
+      // Различаем части в кэше браузера: туннель не отдаёт Content-Range.
+      final partUrl =
+          url.host == 'rue-cobalt.xenon.zone' && url.path == '/tunnel'
+          ? url.replace(
+              queryParameters: {
+                ...url.queryParameters,
+                '_downloadPart': '$start',
+              },
+            )
+          : url;
+      final request = http.Request('GET', partUrl)
         ..headers['Range'] = 'bytes=$start-$end';
       final partClient = _clientFactory();
       _client = partClient;
