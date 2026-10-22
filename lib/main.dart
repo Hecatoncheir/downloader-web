@@ -11,6 +11,7 @@ import 'brand.dart';
 import 'browser_link_input.dart';
 import 'link_input_cubit.dart';
 import 'probe_cubit.dart';
+import 'video_preview.dart';
 
 void main() => runApp(
   MultiBlocProvider(
@@ -33,9 +34,7 @@ Future<void> shareVideo(BuildContext context, MediaLink link) async {
     final file = web.File(
       [(ready ? state.shareFile! : Uint8List(0)).toJS].toJS,
       filename,
-      web.FilePropertyBag(
-        type: filename.endsWith('.webm') ? 'video/webm' : 'video/mp4',
-      ),
+      web.FilePropertyBag(type: videoMimeType(filename)),
     );
     final data = web.ShareData(files: [file].toJS);
     if (!navigator.hasProperty('share'.toJS).toDart ||
@@ -704,11 +703,25 @@ class _FormatCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
+        if (context.watch<ProbeCubit>().state.shareSourceUrl == link.url &&
+            context.watch<ProbeCubit>().state.shareFile != null) ...[
+          const SizedBox(height: 16),
+          VideoPreview(
+            key: ObjectKey(context.watch<ProbeCubit>().state.shareFile),
+            bytes: context.watch<ProbeCubit>().state.shareFile!,
+            filename: context.watch<ProbeCubit>().state.filename,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Видео готово. Нажмите «Сохранить / Поделиться», затем на iOS выберите «Сохранить в Файлы», если этот пункт доступен в системном меню.',
+            style: TextStyle(fontSize: 12, color: muted),
+          ),
+        ],
         TextButton(
           onPressed: busy ? null : () => shareVideo(context, link),
           child: Text(
             context.watch<ProbeCubit>().state.shareSourceUrl == link.url
-                ? 'Отправить видео'
+                ? 'Сохранить / Поделиться'
                 : 'Поделиться',
             style: const TextStyle(fontSize: 12, color: muted),
           ),
