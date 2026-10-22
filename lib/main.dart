@@ -1,5 +1,4 @@
 import 'dart:js_interop';
-import 'dart:js_interop_unsafe';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -22,49 +21,6 @@ void main() => runApp(
     child: const DownloaderApp(),
   ),
 );
-
-Future<void> shareVideo(BuildContext context, MediaLink link) async {
-  final messenger = ScaffoldMessenger.of(context);
-  try {
-    final navigator = web.window.navigator;
-    final cubit = context.read<ProbeCubit>();
-    final state = cubit.state;
-    final ready = state.shareSourceUrl == link.url && state.shareFile != null;
-    if (!ready) {
-      await cubit.download(link, forSharing: true);
-      return;
-    }
-    final filename = state.filename;
-    final file = web.File(
-      [state.shareFile!.toJS].toJS,
-      filename,
-      web.FilePropertyBag(type: videoMimeType(filename)),
-    );
-    final data = web.ShareData(files: [file].toJS);
-    if (!navigator.hasProperty('share'.toJS).toDart ||
-        !navigator.hasProperty('canShare'.toJS).toDart ||
-        !navigator.canShare(data)) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Этот браузер не поддерживает отправку видеофайлов. Можно скачать видео на устройство.',
-          ),
-        ),
-      );
-      return;
-    }
-    await navigator.share(data).toDart;
-  } catch (error) {
-    if (!context.mounted || error.toString().contains('AbortError')) return;
-    messenger.showSnackBar(
-      const SnackBar(
-        content: Text(
-          'Не удалось открыть диалог отправки. Попробуйте ещё раз.',
-        ),
-      ),
-    );
-  }
-}
 
 class DownloaderApp extends StatelessWidget {
   const DownloaderApp({super.key});
@@ -647,8 +603,6 @@ class _FormatCard extends StatelessWidget {
   final bool busy;
   @override
   Widget build(BuildContext context) {
-    final state = context.watch<ProbeCubit>().state;
-    final ready = state.shareSourceUrl == link.url && state.shareFile != null;
     return Container(
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
@@ -694,8 +648,8 @@ class _FormatCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(height: 8),
-          TextButton(
+          const SizedBox(height: 12),
+          FilledButton.tonal(
             onPressed: busy
                 ? null
                 : () => web.window.open(
@@ -703,37 +657,19 @@ class _FormatCard extends StatelessWidget {
                     '_blank',
                     'noopener,noreferrer',
                   ),
-            child: const Text(
-              'Открыть напрямую',
-              style: TextStyle(fontSize: 12, color: muted),
+            style: FilledButton.styleFrom(
+              backgroundColor: coral,
+              foregroundColor: background,
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Открыть'),
+                SizedBox(width: 10),
+                SoftIcon(Glyph.play, color: background, size: 18),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          if (ready) ...[
-            const SizedBox(height: 16),
-            VideoPreview(
-              key: ObjectKey(state.shareFile),
-              bytes: state.shareFile!,
-              filename: state.filename,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Проверьте видео и нажмите «Отправить». На iOS в системном меню можно выбрать «Сохранить в Файлы», если этот пункт доступен.',
-              style: TextStyle(fontSize: 12, color: muted),
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: busy ? null : () => shareVideo(context, link),
-              child: const Text('Отправить'),
-            ),
-          ] else
-            TextButton(
-              onPressed: busy ? null : () => shareVideo(context, link),
-              child: const Text(
-                'Поделиться',
-                style: TextStyle(fontSize: 12, color: muted),
-              ),
-            ),
         ],
       ),
     );
