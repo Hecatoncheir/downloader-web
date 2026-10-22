@@ -30,9 +30,13 @@ Future<void> shareVideo(BuildContext context, MediaLink link) async {
     final cubit = context.read<ProbeCubit>();
     final state = cubit.state;
     final ready = state.shareSourceUrl == link.url && state.shareFile != null;
-    final filename = ready ? state.filename : link.filename;
+    if (!ready) {
+      await cubit.download(link, forSharing: true);
+      return;
+    }
+    final filename = state.filename;
     final file = web.File(
-      [(ready ? state.shareFile! : Uint8List(0)).toJS].toJS,
+      [state.shareFile!.toJS].toJS,
       filename,
       web.FilePropertyBag(type: videoMimeType(filename)),
     );
@@ -47,10 +51,6 @@ Future<void> shareVideo(BuildContext context, MediaLink link) async {
           ),
         ),
       );
-      return;
-    }
-    if (!ready) {
-      await cubit.download(link, forSharing: true);
       return;
     }
     await navigator.share(data).toDart;
@@ -646,92 +646,98 @@ class _FormatCard extends StatelessWidget {
   final MediaLink link;
   final bool busy;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(18),
-    decoration: BoxDecoration(
-      color: surface,
-      border: Border.all(color: line),
-      borderRadius: BorderRadius.circular(8),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Text(
-          link.label,
-          style: const TextStyle(
-            fontFamily: 'Nunito',
-            fontSize: 23,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final state = context.watch<ProbeCubit>().state;
+    final ready = state.shareSourceUrl == link.url && state.shareFile != null;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: surface,
+        border: Border.all(color: line),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            link.label,
+            style: const TextStyle(
+              fontFamily: 'Nunito',
+              fontSize: 23,
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        _Mono(link.details.toUpperCase(), size: 10),
-        const SizedBox(height: 8),
-        Text(
-          link.estimatedBytes == null
-              ? 'Размер не указан источником'
-              : '≈ ${(link.estimatedBytes! / 1048576).toStringAsFixed(1)} МиБ',
-          style: const TextStyle(fontSize: 12, color: muted),
-        ),
-        const SizedBox(height: 20),
-        FilledButton.tonal(
-          onPressed: busy
-              ? null
-              : () => context.read<ProbeCubit>().download(link),
-          style: FilledButton.styleFrom(
-            backgroundColor: ink,
-            foregroundColor: background,
-          ),
-          child: const Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Text('Скачать'),
-              SizedBox(width: 10),
-              SoftIcon(Glyph.download, color: background, size: 18),
-            ],
-          ),
-        ),
-        const SizedBox(height: 8),
-        TextButton(
-          onPressed: busy
-              ? null
-              : () => web.window.open(
-                  link.url.toString(),
-                  '_blank',
-                  'noopener,noreferrer',
-                ),
-          child: const Text(
-            'Открыть напрямую',
-            style: TextStyle(fontSize: 12, color: muted),
-          ),
-        ),
-        const SizedBox(height: 8),
-        if (context.watch<ProbeCubit>().state.shareSourceUrl == link.url &&
-            context.watch<ProbeCubit>().state.shareFile != null) ...[
-          const SizedBox(height: 16),
-          VideoPreview(
-            key: ObjectKey(context.watch<ProbeCubit>().state.shareFile),
-            bytes: context.watch<ProbeCubit>().state.shareFile!,
-            filename: context.watch<ProbeCubit>().state.filename,
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Видео готово. Нажмите «Сохранить / Поделиться», затем на iOS выберите «Сохранить в Файлы», если этот пункт доступен в системном меню.',
-            style: TextStyle(fontSize: 12, color: muted),
-          ),
-        ],
-        TextButton(
-          onPressed: busy ? null : () => shareVideo(context, link),
-          child: Text(
-            context.watch<ProbeCubit>().state.shareSourceUrl == link.url
-                ? 'Сохранить / Поделиться'
-                : 'Поделиться',
+          const SizedBox(height: 8),
+          _Mono(link.details.toUpperCase(), size: 10),
+          const SizedBox(height: 8),
+          Text(
+            link.estimatedBytes == null
+                ? 'Размер не указан источником'
+                : '≈ ${(link.estimatedBytes! / 1048576).toStringAsFixed(1)} МиБ',
             style: const TextStyle(fontSize: 12, color: muted),
           ),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 20),
+          FilledButton.tonal(
+            onPressed: busy
+                ? null
+                : () => context.read<ProbeCubit>().download(link),
+            style: FilledButton.styleFrom(
+              backgroundColor: ink,
+              foregroundColor: background,
+            ),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('Скачать'),
+                SizedBox(width: 10),
+                SoftIcon(Glyph.download, color: background, size: 18),
+              ],
+            ),
+          ),
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: busy
+                ? null
+                : () => web.window.open(
+                    link.url.toString(),
+                    '_blank',
+                    'noopener,noreferrer',
+                  ),
+            child: const Text(
+              'Открыть напрямую',
+              style: TextStyle(fontSize: 12, color: muted),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (ready) ...[
+            const SizedBox(height: 16),
+            VideoPreview(
+              key: ObjectKey(state.shareFile),
+              bytes: state.shareFile!,
+              filename: state.filename,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Проверьте видео и нажмите «Отправить». На iOS в системном меню можно выбрать «Сохранить в Файлы», если этот пункт доступен.',
+              style: TextStyle(fontSize: 12, color: muted),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              onPressed: busy ? null : () => shareVideo(context, link),
+              child: const Text('Отправить'),
+            ),
+          ] else
+            TextButton(
+              onPressed: busy ? null : () => shareVideo(context, link),
+              child: const Text(
+                'Поделиться',
+                style: TextStyle(fontSize: 12, color: muted),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 class _Steps extends StatelessWidget {

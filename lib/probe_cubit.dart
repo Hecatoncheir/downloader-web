@@ -261,7 +261,8 @@ class ProbeCubit extends Cubit<ProbeState> {
       if (forSharing) {
         emit(
           ProbeState(
-            message: 'Видео готово. Нажмите «Сохранить / Поделиться» под выбранным вариантом.',
+            message:
+                'Видео готово. Нажмите «Отправить» под выбранным вариантом.',
             links: previous.links,
             log: log,
             shareFile: bytes,
